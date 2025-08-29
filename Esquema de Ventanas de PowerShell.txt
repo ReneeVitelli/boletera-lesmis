@@ -1,0 +1,70 @@
+🗺️ Esquema de Ventanas de PowerShell
+
+1. Backend
+
+Cómo abrirlo:
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
+npm run dev
+
+Qué verás:
+
+Server listening on http://localhost:8080
+
+Qué hace:
+
+-Atiende la lógica de pagos con Mercado Pago.
+-Genera boletos (PDF + QR).
+-Procesa webhooks de Mercado Pago.
+-Valida los boletos al escanearlos.
+
+👉 Siempre debe estar abierto mientras uses la boletera.
+
+2. Frontend
+
+Cómo abrirlo:
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\frontend"
+npm run dev
+
+Qué verás:
+Algo como:
+
+Local:   http://localhost:5173/
+
+Qué hace:
+
+-Es la página web de la boletera.
+-Aquí tus compradores eligen función y hacen el pago (con Checkout de Mercado Pago).
+
+👉 También debe estar abierto para que la boletera funcione.
+
+3. Cloudflare Tunnel
+
+Cómo abrirlo:
+
+cloudflared tunnel --url http://localhost:8080
+
+Qué verás:
+Una URL pública, por ejemplo:
+
+https://diagram-submissions-kenya-australian.trycloudflare.com
+
+Qué hace:
+
+-Expone tu backend al mundo (necesario para que Mercado Pago mande notificaciones).
+-Esa URL es la que usas en BASE_URL y en el webhook de Mercado Pago.
+-También sirve para validar boletos desde cualquier celular.
+
+👉 Debe estar abierto siempre que quieras recibir pagos y validar boletos con QR.
+
+_______
+
+📌 Resumen rápido
+
+Backend (8080): corazón del sistema.
+Frontend (5173): la boletera web.
+Cloudflare Tunnel: la conexión segura hacia afuera.
+
+Con esas tres ventanas abiertas → ¡boletera 100% operativa! ✅
+_______

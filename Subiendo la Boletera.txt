@@ -1,0 +1,14 @@
+Subiendo la Boletera...
+
+Luego de crear un repositorio nuevo en GitHub, la página arrojó la siguiente URL...
+
+git remote add origin https://github.com/ReneeVitelli/boletera-lesmis.git
+git branch -M main
+git push -u origin main
+
+Excelente, Renèe! 🎉 Esa es justo la URL personalizada de tu nuevo repositorio:
+
+https://github.com/ReneeVitelli/boletera-lesmis.git
+
+______________________________
+

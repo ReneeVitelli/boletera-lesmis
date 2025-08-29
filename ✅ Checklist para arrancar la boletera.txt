@@ -1,0 +1,92 @@
+✅ Checklist para arrancar la boletera
+
+1. Preparativos
+
+-Asegúrate de estar conectada a internet.
+-Ten a mano el correo con el que configuraste el SMTP (para envío de boletos).
+-Abre la carpeta del proyecto en tu PC:
+
+F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter
+_________________
+
+2. Iniciar el Backend
+
+-Abre PowerShell.
+-Ve a la carpeta del backend:
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
+
+-Ejecuta:
+
+npm run dev
+
+-Verifica que aparezca:
+
+Server listening on http://localhost:8080
+_________________
+
+3. Iniciar el Frontend
+
+-Abre otra ventana de PowerShell.
+-Ve a la carpeta del frontend:
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\frontend"
+
+-Ejecuta:
+
+npm run dev
+
+-Verifica que aparezca algo como:
+
+Local:   http://localhost:5173/
+_________________
+
+4. Iniciar el Cloudflare Tunnel
+
+-Abre otra ventana de PowerShell (la tercera).
+-Ejecuta:
+
+cloudflared tunnel --url http://localhost:8080
+
+-Copia la URL pública que te muestra (ejemplo):
+
+https://diagram-submissions-kenya-australian.trycloudflare.com
+_________________
+
+5. Actualizar configuración (solo si cambió la URL de Cloudflare)
+
+-Abre el archivo .env del backend:
+
+notepad .env
+
+-Cambia la línea BASE_URL= por la nueva URL que te dio Cloudflare.
+-Guarda y reinicia el backend (Ctrl + C, luego npm run dev).
+_________________
+
+6. Revisar Webhook en Mercado Pago
+
+-Ve a Tus integraciones → Webhooks.
+-Asegúrate de que la URL sea:
+
+https://<tu-url-de-cloudflare>/api/payments/webhook
+
+-Si cambió, actualízala y guarda.
+_________________
+
+7. Prueba rápida (opcional)
+
+-Emite un boleto de prueba con el snippet que te preparé.
+-Verifica que se genere un PDF en backend/tmp/.
+-Escanea el QR → debe mostrar “✅ Boleto válido…”.
+-Haz clic en “Validar boleto” en el PDF → debe abrir la misma página.
+_________________
+
+📌 Resumen
+
+Siempre mantén tres ventanas abiertas:
+
+Backend → corre la lógica de boletos y pagos.
+Frontend → muestra la boletera web.
+Cloudflare Tunnel → expone tu boletera públicamente y permite webhooks de Mercado Pago.
+
+Y antes de vender, revisa que la URL de Cloudflare esté actualizada tanto en el .env como en Mercado Pago.

@@ -1,0 +1,138 @@
+"F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
+_____________________
+
+CUENTAS DE PRUEBA (Mercado Pago)
+
+"Prueba Boletera"
+Vendedor:
+User ID: 2656814886
+Usuario (correo electrónico): TESTUSER5124576530409888663
+Contraseña: sblAT1vXdF
+Access Token: APP_USR-146060336582368-082804-25a4d4af255bd040ace588fa33f0d98c-2656814886
+Public Key: APP_USR-8ebcd14c-adcc-4183-8e1c-6061221ae535
+Client ID: 146060336582368
+Client Secret: GDbJXsjXSAoaLuqgfAnWVquloOBWFIpY
+
+"Prueba Boletera"
+Comprador:
+User ID - 2651400861
+Usuario (correo electrónico): TESTUSER6388956708001048558
+Contraseña: gTrmhTHr7b
+
+
+__________________________________
+
+  VITE v5.4.19  ready in 160 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
+3:03:02 a.m. [vite] page reload index.html
+_________________________________
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
+_____________________________________
+
+your url is: https://heavy-owls-fetch.loca.lt
+_____________________________________
+
+https://heavy-owls-fetch.loca.lt/api/payments/webhook
+____________________________________
+
+Clave Secreta de Webhooks de Mercado Pago:
+
+bc26750e4c9133e443e125d7e07634db1da40c2f20432de9f7f24e1fce7e7d92
+
+MP_WEBHOOK_SECRET=bc26750e4c9133e443e125d7e07634db1da40c2f20432de9f7f24e1fce7e7d92
+
+____________________________________
+
+Contraseña del túnel (es la IP pública de tu conexión): 189.147.176.91
+____________________________________
+NGROK
+
+ngrok config add-authtoken 31ukMkzo2kaKaNXxpLXNZYYvjWf_7iWMNjMv1Cj95oEBDdaed
+
+https://b71620b2888c.ngrok-free.app
+____________________________________
+
+Contraseña de aplicación generada para el dispositivo: Boletera Los Miserables
+
+zauc ftpf tljg umvo
+
+zaucftpftljgumvo
+
+____________________________________
+
+¡Buen ojo! Lo que pasó es totalmente lógico:
+En tu PC ya habías “aceptado” el aviso de ngrok, y ngrok recuerda tu IP → por eso entras directo.
+En tu celular es otra IP (o red/celda distinta) → ngrok vuelve a mostrar el banner.
+Y aquí la clave: ese banner solo se salta si la petición lleva un header especial (ngrok-skip-browser-warning) o si usas ngrok de pago. El truco del query param (?ngrok-skip-browser-warning=1) ayuda con algunas configuraciones, pero no es oficial ni fiable en móviles. Por eso lo ves en el cel.
+Opciones para resolverlo
+Opción rápida (suficiente para funciones)
+Pre-autoriza los dispositivos del staff que van a validar boletos en la entrada:
+En cada cel/tablet del staff, abre tu URL base:
+
+https://b71620b2888c.ngrok-free.app
+
+
+Toca “Visitar el sitio” una vez.
+A partir de ahí, ese dispositivo ya no verá el banner (ngrok recuerda la IP por un tiempo).
+Como quienes escanean son ustedes (no el público), con que los validadores queden autorizados, alcanza.
+Ventaja: 0 cambios de código.
+Nota: si cambian de red o pasan muchas horas, quizá haya que tocar “Visitar el sitio” de nuevo.
+_____________________________________________
+
+Códigos comunes...
+
+Guarda y reinicia el backend:
+Ctrl + C
+npm run dev
+(Server listening on http://localhost:8080)
+
+
+Para llamar un bloc de notas:
+notepad .env
+_____________________________________________
+
+URL de Cloudflared...
+
+https://diagram-submissions-kenya-australian.trycloudflare.com
+
+Tu túnel de Cloudflare quedó abierto y operativo con esta URL:
+https://diagram-submissions-kenya-australian.trycloudflare.com
+(Deja esa ventana de cloudflared abierta; si la cierras, la URL deja de funcionar. Los mensajes sobre certificados/origin cert son informativos en modo “quick tunnel”; no bloquean este uso.)
+Aquí vamos, paso a paso:
+1) Actualiza tu .env del backend
+- En la ventana del backend no pegues comandos. Abre otra PowerShell y ejecuta:
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
+notepad .env
+- Cambia la línea de BASE_URL a tu nueva URL de Cloudflare:
+BASE_URL=https://diagram-submissions-kenya-australian.trycloudflare.com
+- Guarda y cierra el bloc.
+- Reinicia el backend:
+- En la ventana donde ves Server listening... haz
+Ctrl + C y luego:
+npm run dev
+Espera a ver: Server listening on http://localhost:8080.
+2) Actualiza el Webhook en Mercado Pago
+En Tus integraciones → Webhooks cambia la URL a:
+https://diagram-submissions-kenya-australian.trycloudflare.com/api/payments/webhook
+Evento marcado: Pagos.
+Guarda.
+(Si en algún momento reinicias Cloudflare Tunnel y te da otra URL, tendrás que actualizar aquí también.)
+_____________________________________________
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
+_____________________________________________
+
+Para reiniciar el backend:
+En la ventana donde ves <Server listening...> haz:
+
+Ctrl + C y luego:
+npm run dev
+
+Espera a ver: Server listening on http://localhost:8080.
+_____________________________________________
+
+

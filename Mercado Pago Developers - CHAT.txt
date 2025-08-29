@@ -1,0 +1,99 @@
+Este asistente usa inteligencia artificial para responderte
+
+Hoy
+¡Hola, Anamaría! 👋
+
+Estoy aquí para hacer que tu experiencia con Mercado Pago Developers sea más eficiente. ¿En qué puedo ayudarte?
+2:03
+Hola. ¿Qué debo hacer para conectarme como vendedor de pueba para crear la aplicación con el producto a integrar?
+2:04
+Ingresa tu e-mail o teléfono para iniciar sesión
+
+mercadopago.com
+Para crear una aplicación y conectarte como vendedor de prueba, puedes dirigirte al entorno de “Tus integraciones” en Mercado Pago. Aquí se te permite gestionar tus aplicaciones y realizar pruebas para simular transacciones.
+
+Ingresa al Panel del desarrollador.
+Crea una nueva aplicación haciendo clic en “Crear aplicación” en la esquina superior derecha.
+Completa el formulario y selecciona “Crear aplicación” para finalizar.
+En este entorno, puedes también configurar notificaciones, activar credenciales de producción y validar la calidad de tu integración. Para más detalles, visita el artículo sobre cómo crear una nueva aplicación.
+
+Si necesitas más claridad en algún paso, por favor, proporciona más detalles o házme otra pregunta. 😊
+
+2:04
+Ya tengo las 2 cuentas que me pidieron crear, una como vendedor y otra como comprador, pero no sé cómo acceder a una de estas cuentas… ¿Debo iniciar sesión con la información del supesto usuario?
+2:06
+Para acceder a tus cuentas de prueba como vendedor y comprador, necesitas iniciar sesión con cada una de ellas usando las credenciales que hayas configurado para cada cuenta ficticia. Asegúrate de seleccionar la cuenta correcta al iniciar sesión, ya que cada una debe utilizar un correo electrónico y una contraseña únicos que definas durante la configuración de tus cuentas de prueba.
+
+Si necesitas más detalles sobre cómo configurar o cambiar entre estas cuentas de prueba, no dudes en preguntar. 😊
+2:07
+¿Debo iniciar sesión en Mercado Pago o en Mercado Libre?
+2:08
+Debes iniciar sesión en Mercado Pago para gestionar tus cuentas de prueba como vendedor o comprador. Mercado Libre y Mercado Pago están integrados, pero las configuraciones específicas para las cuentas de prueba y las pruebas de integración se realizan directamente en Mercado Pago.
+
+Si tienes alguna otra pregunta o necesitas más ayuda, no dudes en preguntar. 😊
+2:08
+En la página de inicio de Mercado Pago me pide correo electrónico o teléfono para iniciar sesión, pero solo tengo User ID, Usuario y Contraseña de las Cuentas de Prueba que cree… ¿Qué debo poner para poder iniciar la sesión con ellas?
+2:13
+Para iniciar sesión con tus cuentas de prueba en Mercado Pago, generalmente necesitas usar el correo o el teléfono que estableciste al crear la cuenta de prueba. Si solo tienes el User ID y Usuario generado, asegúrate de que esos datos estén asociados a un correo electrónico específico que creaste durante el proceso de configuración de las cuentas de prueba.
+
+Si no tienes un correo asignado o no lo recuerdas, te recomendaría verificar la configuración de la cuenta de prueba en el entorno de desarrollador o revisar si hay documentación adicional donde configuraste esas cuentas. De esa manera, sabrás el correo asociado y podrás iniciar sesión sin problemas.
+
+Si tienes más dudas o algún detalle sobre el proceso, estaré encantado de ayudarte. 😊
+2:13
+Cómo obtengo las credenciales productivas de una cuenta de prueba
+2:15
+Ingresa tu e-mail o teléfono para iniciar sesión
+
+mercadopago.com
+Para obtener las credenciales productivas de una cuenta de prueba en Mercado Pago, sigue estos pasos:
+
+Accede a Tus Integraciones:
+
+Ve a la sección “Tus integraciones” en el sitio de Mercado Pago Developers.
+Inicia sesión con la información de tu cuenta de Mercado Pago.
+Selecciona o Crea una Aplicación:
+
+Si ya tienes una aplicación, selecciónala de la lista.
+Si no, crea una nueva aplicación para la integración que deseas realizar.
+Encuentra las Credenciales de Producción:
+
+Una vez dentro de tu aplicación, en el menú lateral izquierdo, selecciona “Credenciales de producción”.
+Completa la información requerida, como la industria y el sitio web de tu negocio, para activar las credenciales de producción.
+Acepta la Declaración de Privacidad y los Términos y Condiciones, luego haz clic en “Activar credenciales de producción” para obtenerlas.
+Condiciones para Probar:
+
+Aunque estás utilizando una cuenta de prueba, las credenciales de producción solo se activarán completamente para recibir pagos reales después de haber completado los procesos de verificación o cumplimiento necesarios por Mercado Pago.
+Para más detalles, puedes consultar la documentación oficial de Mercado Pago.
+
+Ahora, me gustaría saber un poco más:
+
+¿Ya has creado una aplicación en tu cuenta de desarrollador?
+¿Estás tratando de activar credenciales de producción o enfrentando algún error al intentar hacerlo?
+Esto me ayudará a entender mejor tu situación. 😊
+
+2:16
+Ya cree la aplicación en mi cuenta de desarrollador y quiero obtener el Access Token. Dentro de los pasos para obteber las credenciales de prueba me piden que acceda a una de las cuentas de prueba y cree una aplicación con el producto a integrar, pero no sé cómo acceder a la cuenta de vendedor
+2:22
+Para obtener el Access Token de una cuenta de prueba como vendedor, debes seguir los pasos adecuados para acceder y gestionar tus credenciales de prueba.
+
+Cuando hayas creado una aplicación en tu cuenta de desarrollador, sigue estos pasos para usar las cuentas de prueba:
+
+Acceso a la Plataforma:
+
+Ve a la plataforma de Mercado Pago Developers e inicia sesión con tu cuenta de desarrollador.
+Cuentas de Prueba:
+
+Una vez que inicies sesión, gestiona tus cuentas de prueba desde la sección dedicada a “Tus integraciones”. Aquí puedes utilizar las cuentas simuladas que creaste previamente.
+Configuración de la Aplicación:
+
+Estando en la aplicación que has creado en el entorno de pruebas, verifica si puedes gestionar las credenciales a través de esta aplicación. Si se te solicita un usuario y contraseña específicos para las transacciones de prueba, asegúrate de que se hayan configurado previamente y verifica que estés utilizando las credenciales correctas asociadas.
+Obtención de Credenciales:
+
+Dentro del panel de desarrollador, busca la sección específica para las “Credenciales de prueba”.
+Aquí deberías encontrar el Access Token que necesitas. Este se genera una vez que has ingresado y configurado adecuadamente tu aplicación de prueba.
+Transacciones de Prueba:
+
+Recuerda que las credenciales y el Access Token que obtendrás serán para realizar transacciones de prueba únicamente. Para realizar transacciones reales, comunicarte con soporte técnico para activar las credenciales de producción es fundamental.
+Para más detalles sobre la gestión de cuentas y las credenciales, consulta la documentación específica en Mercado Pago Developers.
+
+Ahora, para continuar, verifica en qué proceso estás encontrando dificultades. ¿Necesitas más ayuda para acceder a tus cuentas de prueba, o hay algún paso adicional con el que requieras asistencia?

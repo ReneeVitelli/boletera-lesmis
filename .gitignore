@@ -1,0 +1,12 @@
+﻿# Raíz
+.DS_Store
+
+# Backend
+backend\node_modules\
+backend\.env
+backend\data\
+backend\tmp\
+
+# Frontend
+frontend\node_modules\
+frontend\dist\
