@@ -24,7 +24,7 @@ router.post('/issue', async (req, res) => {
 
       if (buyer_email) {
         await sendTicketEmail({
-          to: buyer_email,
+          to: 'anamaria.brito@gmail.com',
           subject: `Tu boleto – ${function_label}`,
           html: `<p>Hola ${buyer_name || ''},</p>
                  <p>Adjuntamos tu boleto para <strong>${event_title || 'el evento'}</strong>.<br>

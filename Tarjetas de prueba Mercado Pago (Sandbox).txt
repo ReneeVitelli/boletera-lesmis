@@ -1,0 +1,45 @@
+💳 Tarjetas de prueba Mercado Pago (Sandbox)
+
+✅ Pagos aprobados (usar nombre del titular = APRO)
+
+Visa: 4509 9535 6623 3704
+Mastercard: 5031 7557 3453 0604
+American Express: 3711 803032 57522
+
+Datos adicionales (para todas las tarjetas):
+
+Fecha de vencimiento: cualquier futura (ej. 12/25)
+Código de seguridad (CVV): 123
+Nombre del titular: APRO
+Documento (DNI/CURP, etc.): cualquier número válido de 8 dígitos (ej. 12345678)
+
+❌ Pagos rechazados
+
+(Para probar qué pasa si un pago falla)
+
+Visa: 4929 2046 4364 0775 (rechazado sin fondos)
+Mastercard: 5416 7526 0252 0425 (rechazado por tarjeta robada)
+
+👉 En estos casos, tu boletera debe mostrar “pago rechazado” y no generar boleto.
+
+🟡 Pagos pendientes / en revisión
+
+(Para simular que Mercado Pago pone el pago en revisión antes de aprobarlo)
+
+Visa: 4009 6782 9871 6531
+
+Mastercard: 5031 7557 3453 0604 con Nombre distinto de APRO
+
+👉 Aquí Mercado Pago manda notificación de pago “in_process”. Tu boletera debería esperar antes de emitir boleto.
+
+📌 Resumen rápido
+
+APRO + tarjetas arriba → boleto emitido ✅
+
+Tarjetas de rechazado → sin boleto ❌
+
+Pendiente → boleto no se emite hasta actualización 🔄
+
+Esto te da un kit completo de pruebas 🎭.
+
+Con ellas podrás simular todos los escenarios antes de abrir la boletera al público.

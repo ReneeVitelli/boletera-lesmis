@@ -3,8 +3,7 @@ _____________________
 
 CUENTAS DE PRUEBA (Mercado Pago)
 
-"Prueba Boletera"
-Vendedor:
+"Prueba Boletera Vendedor"
 User ID: 2656814886
 Usuario (correo electrónico): TESTUSER5124576530409888663
 Contraseña: sblAT1vXdF
@@ -13,12 +12,32 @@ Public Key: APP_USR-8ebcd14c-adcc-4183-8e1c-6061221ae535
 Client ID: 146060336582368
 Client Secret: GDbJXsjXSAoaLuqgfAnWVquloOBWFIpY
 
-"Prueba Boletera"
-Comprador:
+"Pba Comprador Tarjeta 1"
 User ID - 2651400861
 Usuario (correo electrónico): TESTUSER6388956708001048558
 Contraseña: gTrmhTHr7b
 
+"Pba Comprador DMP 50"
+User ID - 2659975112
+Usuario (correo electrónico): TESTUSER5539862274521253076
+Contraseña: w9eS3f3m5o
+
+__________________________________
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
+
+notepad .\src\db.js
+notepad .\src/routes/tickets.js
+
+__________________________________
+
+Ruta de la carpeta raíz del proyecto...
+
+F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter
+
+Código para abrir mi PowerShell en la carpeta raíz del proyecto...
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter"
 
 __________________________________
 

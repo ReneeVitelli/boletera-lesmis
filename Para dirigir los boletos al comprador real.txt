@@ -1,0 +1,15 @@
+Abrir Power Shell y poner la ruta:
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
+
+Poner el código:
+
+notepad .\src/routes/tickets.js
+
+En el Bloc de Notas, cambiar...
+
+to: 'anamaria.brito@gmail.com', 
+
+Por...
+
+to: buyer_email,

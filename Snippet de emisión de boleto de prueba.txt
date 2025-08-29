@@ -16,3 +16,20 @@ Invoke-RestMethod -Method POST `
     "currency": "MXN",
     "event_title": "Los Miserables"
   }'
+
+_____________________________
+
+Invoke-RestMethod -Method POST `
+  -Uri "https://boletera-backend.onrender.com/api/tickets/issue" `
+  -ContentType "application/json" `
+  -Body '{
+    "buyer_name":"Prueba Render",
+    "buyer_email":"renee.vitelli@gmail.com",
+    "buyer_phone":"5555555555",
+    "function_id":"funcion-1",
+    "function_label":"Función 1 - Jue 12 Sep 2025 19:00",
+    "quantity":1,
+    "price":350,
+    "currency":"MXN",
+    "event_title":"Los Miserables"
+  }'
