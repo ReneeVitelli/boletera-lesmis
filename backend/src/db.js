@@ -8,7 +8,7 @@ fs.mkdirSync(dir, { recursive: true });
 
 const db = new Database(dbPath, { verbose: null });
 
-// Tablas y migraciones
+// --- Migraciones / creación de tablas ---
 db.exec(`
   CREATE TABLE IF NOT EXISTS tickets (
     id TEXT PRIMARY KEY,
@@ -22,28 +22,42 @@ db.exec(`
     price REAL,
     used INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    payment_id TEXT  -- nullable en histórico; lo llenaremos a futuro
+    payment_id TEXT
   );
-
   CREATE INDEX IF NOT EXISTS idx_tickets_function ON tickets(function_id);
   CREATE INDEX IF NOT EXISTS idx_tickets_email ON tickets(buyer_email);
 `);
 
-// Asegura columna payment_id (por si venías de una versión previa)
 try {
-  db.prepare(`SELECT payment_id FROM tickets LIMIT 1`).get();
+  db.prepare('SELECT payment_id FROM tickets LIMIT 1').get();
 } catch {
   db.exec(`ALTER TABLE tickets ADD COLUMN payment_id TEXT`);
 }
 
-// Índice único para evitar duplicados por pago (si no existe)
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS ux_tickets_payment_id
   ON tickets(payment_id)
   WHERE payment_id IS NOT NULL
 `);
 
-// Helpers
+/* 
+  Tabla opcional de LOG de pagos.
+  Algunas rutas/patches pueden intentar INSERT en "pagos".
+  La dejamos creada para evitar errores y para auditar webhooks si quieres.
+*/
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pagos (
+    id TEXT PRIMARY KEY,           -- payment_id de MP
+    status TEXT,
+    amount REAL,
+    currency TEXT,
+    email TEXT,
+    raw TEXT,                      -- JSON del payload (string)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+// --- Helpers tickets ---
 export function insertTicket(t) {
   const stmt = db.prepare(`
     INSERT INTO tickets (
@@ -77,6 +91,15 @@ export function listTicketsByFunction(function_id) {
     WHERE function_id = ?
     ORDER BY created_at DESC
   `).all(function_id);
+}
+
+// --- Helper opcional para loguear pagos ---
+export function logPayment({ id, status, amount, currency, email, raw }) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO pagos (id, status, amount, currency, email, raw)
+    VALUES (@id, @status, @amount, @currency, @email, @raw)
+  `);
+  return stmt.run({ id, status, amount, currency, email, raw });
 }
 
 export default db;
