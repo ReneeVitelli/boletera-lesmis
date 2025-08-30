@@ -1,60 +1,43 @@
-import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
+import mercadopago from 'mercadopago';
 
-function getClient() {
-  const { MP_ACCESS_TOKEN } = process.env;
-  if (!MP_ACCESS_TOKEN) {
-    throw new Error('Falta MP_ACCESS_TOKEN en .env');
-  }
-  return new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
+export function initMP() {
+  // SDK v2: setAccessToken
+  mercadopago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
 }
 
-/**
- * Crea una preferencia de pago de Checkout Pro
- * title: string
- * quantity: number
- * price: number
- * currency: 'MXN' | ...
- * backUrls: { success: string, failure: string, pending: string }
- * metadata: object (opcional; ej. function_id, function_label)
- */
-export async function createPreference({ title, quantity, price, currency, backUrls, metadata }) {
-  const client = getClient();
-  const preference = new Preference(client);
+export async function createPreference({
+  title,
+  quantity,
+  unit_price,
+  currency_id,
+  back_urls,
+  auto_return = 'approved',
+  notification_url,
+  metadata = {},
+}) {
+  // Fuerza números
+  const qty = Number(quantity || 1);
+  const price = Number(unit_price || 0);
 
-  const baseUrl = process.env.BASE_URL; // debe ser https://<tu-ngrok>.ngrok-free.app
+  const preference = {
+    items: [
+      {
+        title: title || 'Boleto',
+        quantity: Number.isFinite(qty) ? qty : 1,
+        unit_price: Number.isFinite(price) ? price : 0,
+        currency_id: currency_id || 'MXN',
+      },
+    ],
+    back_urls: back_urls || {
+      success: 'https://example.org/ok',
+      failure: 'https://example.org/ok',
+      pending: 'https://example.org/ok',
+    },
+    auto_return,
+    notification_url,
+    metadata, // útil si envías function_id, buyer_name, etc. desde el frontend
+  };
 
-  const res = await preference.create({
-    body: {
-      items: [
-        {
-          title,
-          quantity,
-          currency_id: currency,
-          unit_price: Number(price)
-        }
-      ],
-
-      // 👇 MUY IMPORTANTE: así nos aseguramos de recibir el webhook por preferencia
-      notification_url: `${baseUrl}/api/payments/webhook`,
-
-      // URLs para redirección (el backend ya valida/forza https cuando haga falta)
-      back_urls: backUrls,
-
-      // Datos adicionales (ej. function_id para saber qué función compró)
-      metadata
-    }
-  });
-
-  // La respuesta incluye init_point y sandbox_init_point
-  return res;
-}
-
-/**
- * Obtiene un pago por id
- */
-export async function getPayment(paymentId) {
-  const client = getClient();
-  const payment = new Payment(client);
-  const res = await payment.get({ id: paymentId });
-  return res;
+  const pref = await mercadopago.preferences.create(preference);
+  return pref.body;
 }
