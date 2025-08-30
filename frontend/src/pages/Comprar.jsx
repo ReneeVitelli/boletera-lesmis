@@ -1,39 +1,77 @@
 import React from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
-export default function Comprar(){
-  const { state } = useLocation();
+const API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  import.meta.env.VITE_API_BASE_URL ||
+  'https://boletera-backend.onrender.com';
 
-  async function crearPreferencia(){
-    if (!state) return;
+async function handlePay() {
+  try {
     const payload = {
-      title: state.title,
+      title: 'Función 1 (Jue)',
       quantity: 1,
-      price: state.price,
+      price: 150,
       currency: 'MXN',
-      success_url: window.location.origin + '/?ok=1'
+      success_url: 'https://los-miserables.netlify.app/?ok=1',
     };
-    const res = await fetch((import.meta.env.VITE_API_BASE || 'http://localhost:8080') + '/api/payments/preference', {
+
+    const resp = await fetch(`${API_BASE}/api/payments/preference`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (data.ok){
-      const url = data.preference.init_point || data.preference.sandbox_init_point;
-      window.open(url, '_blank');
-    } else {
-      alert('Error creando preferencia');
+
+    if (!resp.ok) {
+      let msg = 'Error creando preferencia';
+      try {
+        const err = await resp.json();
+        msg = err?.details || err?.error || msg;
+      } catch {}
+      alert(msg);
+      return;
     }
+
+    const data = await resp.json();
+    const url = data.sandbox_init_point || data.init_point;
+    if (!url) {
+      alert('No se recibió init_point de Mercado Pago.');
+      console.error('Respuesta sin init_point:', data);
+      return;
+    }
+
+    window.location.href = url; // redirige al checkout
+  } catch (e) {
+    console.error(e);
+    alert('Error creando preferencia');
   }
+}
 
-  if (!state) return <p>Selecciona una función desde la portada.</p>;
-
+export default function Comprar() {
   return (
-    <div style={{maxWidth:600,margin:'0 auto',background:'#fff',padding:20,borderRadius:12}}>
-      <h2 style={{fontSize:18,fontWeight:700}}>{state.title}</h2>
-      <p style={{color:'#666'}}>Al hacer clic irás al checkout de Mercado Pago (sandbox).</p>
-      <button onClick={crearPreferencia} style={{padding:'10px 14px',borderRadius:10,background:'#000',color:'#fff'}}>Pagar ${state.price} MXN (sandbox)</button>
+    <div style={{ padding: 24, maxWidth: 620 }}>
+      <p>
+        <Link to="/">Boletera – Les Misérables</Link>
+      </p>
+      <h1>Función 1 (Jue)</h1>
+      <p>Al hacer clic irás al checkout de Mercado Pago (sandbox).</p>
+
+      <button
+        onClick={handlePay}
+        style={{
+          background: '#000',
+          color: '#fff',
+          border: 'none',
+          padding: '12px 18px',
+          borderRadius: 8,
+          cursor: 'pointer',
+          fontWeight: 600,
+        }}
+      >
+        Pagar $150 MXN (sandbox)
+      </button>
+
+      <p style={{ marginTop: 24 }}>© 2025 Taller de Teatro</p>
     </div>
   );
 }
