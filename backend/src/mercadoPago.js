@@ -1,7 +1,7 @@
 import mercadopago from 'mercadopago';
 
 export function initMP() {
-  // SDK v2: setAccessToken
+  // SDK v2
   mercadopago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
 }
 
@@ -15,7 +15,6 @@ export async function createPreference({
   notification_url,
   metadata = {},
 }) {
-  // Fuerza números
   const qty = Number(quantity || 1);
   const price = Number(unit_price || 0);
 
@@ -35,7 +34,7 @@ export async function createPreference({
     },
     auto_return,
     notification_url,
-    metadata, // útil si envías function_id, buyer_name, etc. desde el frontend
+    metadata,
   };
 
   const pref = await mercadopago.preferences.create(preference);
