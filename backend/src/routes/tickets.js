@@ -1,26 +1,101 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  insertTicket,
-  getTicket,
-  markUsed,
-  getTicketByPaymentId,
-} from '../db.js';
+import db from '../db.js';
 import { createTicketPDF } from '../pdf.js';
-import { sendMail } from '../mailer.js';
+import { sendTicketEmail } from '../mailer.js';
 
 const router = Router();
 
+/* ---------------------- DB bootstrap ---------------------- */
+
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS tickets (
+    id TEXT PRIMARY KEY,
+    buyer_name   TEXT,
+    buyer_email  TEXT,
+    buyer_phone  TEXT,
+    function_id  TEXT,
+    function_label TEXT,
+    event_title  TEXT,
+    currency     TEXT,
+    price        REAL,
+    payment_id   TEXT,        -- para idempotencia
+    issued_at    TEXT DEFAULT (datetime('now')),
+    used_at      TEXT
+  );
+`).run();
+
+db.prepare(`
+  CREATE UNIQUE INDEX IF NOT EXISTS ux_tickets_payment
+  ON tickets (payment_id)
+  WHERE payment_id IS NOT NULL;
+`).run();
+
+/* --------------------- helpers / config ------------------- */
+
+function baseUrl() {
+  // URL pública del backend (sirve /t/:id). En Render la definimos como BASE_URL
+  return process.env.BASE_URL || 'http://localhost:8080';
+}
+
+/**
+ * Si está definido process.env.ISSUE_API_KEY, exige cabecera X-Api-Key igual.
+ */
+function assertApiKey(req) {
+  const key = process.env.ISSUE_API_KEY;
+  if (!key) return; // no hay guardia
+  const hdr = req.header('X-Api-Key') || '';
+  if (hdr !== key) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+}
+
+/* ------------------------- routes ------------------------- */
+
 /**
  * POST /api/tickets/issue
- * Emite PDF + correo y guarda en BD.
- * - Si viene payment_id y ya existe, NO duplica (idempotente).
- * - Si no viene id, lo genera.
+ * Emite un boleto (idempotente por payment_id).
+ * Si ya existe un ticket con ese payment_id: responde { ok:true, id, reused:true } sin re-enviar correo.
  */
 router.post('/issue', async (req, res) => {
   try {
+    assertApiKey(req);
+
     const {
       id,
+      buyer_name = '—',
+      buyer_email = '',
+      buyer_phone = '',
+      function_id = 'funcion-1',
+      function_label = 'Función',
+      event_title = process.env.EVENT_TITLE || 'Evento',
+      currency = process.env.CURRENCY || 'MXN',
+      price = Number(process.env.PRICE_GENERAL || 0),
+      payment_id = null,
+    } = req.body || {};
+
+    // Idempotencia por payment_id
+    if (payment_id) {
+      const found = db
+        .prepare('SELECT id FROM tickets WHERE payment_id = ?')
+        .get(String(payment_id));
+      if (found?.id) {
+        // ya existe, no duplicamos ni reenviamos correo
+        return res.json({ ok: true, id: found.id, reused: true });
+      }
+    }
+
+    // Insert
+    const ticketId = id || uuidv4();
+    db.prepare(
+      `INSERT INTO tickets
+        (id, buyer_name, buyer_email, buyer_phone, function_id, function_label,
+         event_title, currency, price, payment_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      ticketId,
       buyer_name,
       buyer_email,
       buyer_phone,
@@ -28,93 +103,79 @@ router.post('/issue', async (req, res) => {
       function_label,
       event_title,
       currency,
-      price,
-      payment_id, // opcional (ideal cuando lo dispara el webhook)
-    } = req.body || {};
+      Number(price) || 0,
+      payment_id ? String(payment_id) : null
+    );
 
-    if (!buyer_email) {
-      return res.status(400).json({ ok: false, error: 'buyer_email_required' });
-    }
-    if (!function_id || !function_label) {
-      return res.status(400).json({ ok: false, error: 'function_required' });
-    }
-
-    if (payment_id) {
-      const already = getTicketByPaymentId(String(payment_id));
-      if (already) {
-        return res.json({ ok: true, id: already.id, duplicated: true });
-      }
-    }
-
-    const ticketId = id || uuidv4();
-
-    // Inserta (si ya existía por PK, ignoramos el constraint y seguimos)
-    try {
-      insertTicket({
-        id: ticketId,
-        buyer_name: buyer_name || '—',
-        buyer_email,
-        buyer_phone: buyer_phone || '',
-        function_id,
-        function_label,
-        event_title: event_title || process.env.EVENT_TITLE || 'Evento',
-        currency: currency || process.env.CURRENCY || 'MXN',
-        price: Number(price || process.env.PRICE_GENERAL || 0) || 0,
-        payment_id: payment_id ? String(payment_id) : null,
-      });
-    } catch (e) {
-      const msg = String(e?.message || '');
-      if (!msg.includes('SQLITE_CONSTRAINT')) {
-        console.error('[tickets/issue] DB insert error:', e);
-        return res.status(500).json({ ok: false, error: 'db_insert_failed' });
-      }
-      // si fue constraint (duplicado), continuamos a generar/enviar PDF
-    }
-
-    const baseUrl = process.env.BASE_URL;
-    const filePath = await createTicketPDF({
+    // Generar PDF
+    const verifyUrl = `${baseUrl()}/t/${ticketId}`;
+    const pdfPath = await createTicketPDF({
       ticket: {
         id: ticketId,
-        buyer_name: buyer_name || '—',
+        buyer_name,
         buyer_email,
-        buyer_phone: buyer_phone || '',
+        buyer_phone,
         function_id,
         function_label,
-        event_title: event_title || process.env.EVENT_TITLE || 'Evento',
-        currency: currency || process.env.CURRENCY || 'MXN',
-        price: Number(price || process.env.PRICE_GENERAL || 0) || 0,
+        event_title,
+        currency,
+        price: Number(price) || 0,
       },
-      baseUrl,
+      baseUrl: baseUrl(),
       senderName: process.env.SENDER_NAME || 'Boletera',
     });
 
-    await sendMail({
-      to: buyer_email,
-      subject: `Tus boletos – ${event_title || process.env.EVENT_TITLE || 'Evento'}`,
-      text: `¡Gracias! Adjuntamos tus boletos.\n\nSi no puedes ver el PDF, responde a este correo.`,
-      attachments: [{ filename: `boleto-${ticketId}.pdf`, path: filePath }],
-    });
+    // Enviar correo (si hay email)
+    if (buyer_email) {
+      await sendTicketEmail({
+        to: buyer_email,
+        name: buyer_name || '',
+        subject:
+          process.env.MAIL_SUBJECT ||
+          `Tus boletos – ${event_title} (${function_label})`,
+        ticketId,
+        function_label,
+        event_title,
+        currency,
+        price: Number(price) || 0,
+        verifyUrl,
+        pdfPath,
+      });
+    }
 
     return res.json({ ok: true, id: ticketId });
   } catch (err) {
-    console.error('[tickets/issue] ERROR:', err?.message || err);
-    return res
-      .status(500)
-      .json({ ok: false, error: 'issue_failed', details: String(err?.message || err) });
+    const status = err.status || 500;
+    console.warn('[tickets/issue] WARN:', err?.message || err);
+    return res.status(status).json({
+      ok: false,
+      error: String(err?.message || err),
+    });
   }
 });
 
-// GET /api/tickets/:id
-router.get('/:id', (req, res) => {
-  const t = getTicket(req.params.id);
-  if (!t) return res.status(404).json({ ok: false, error: 'not_found' });
-  return res.json({ ok: true, ticket: t });
-});
-
-// POST /api/tickets/:id/use
+/**
+ * POST /api/tickets/:id/use
+ * Marca un boleto como usado (si no lo estaba).
+ */
 router.post('/:id/use', (req, res) => {
-  const r = markUsed(req.params.id);
-  return res.json({ ok: true, changes: r.changes || 0 });
+  const id = String(req.params.id || '');
+  const row = db
+    .prepare('SELECT used_at FROM tickets WHERE id = ?')
+    .get(id);
+
+  if (!row) {
+    return res.status(404).json({ ok: false, error: 'ticket_not_found' });
+  }
+  if (row.used_at) {
+    return res.json({ ok: true, already_used: true, used_at: row.used_at });
+  }
+
+  db.prepare(
+    "UPDATE tickets SET used_at = datetime('now') WHERE id = ?"
+  ).run(id);
+
+  return res.json({ ok: true, used: true });
 });
 
 export default router;
