@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import db from '../db.js';
+import { db } from '../db.js'; // <-- IMPORT CORREGIDO (nombrado)
 import { createTicketPDF } from '../pdf.js';
 import { sendTicketEmail } from '../mailer.js';
 
@@ -34,7 +34,6 @@ db.prepare(`
 /* --------------------- helpers / config ------------------- */
 
 function baseUrl() {
-  // URL pública del backend (sirve /t/:id). En Render la definimos como BASE_URL
   return process.env.BASE_URL || 'http://localhost:8080';
 }
 
@@ -43,7 +42,7 @@ function baseUrl() {
  */
 function assertApiKey(req) {
   const key = process.env.ISSUE_API_KEY;
-  if (!key) return; // no hay guardia
+  if (!key) return; // sin guardia
   const hdr = req.header('X-Api-Key') || '';
   if (hdr !== key) {
     const err = new Error('Unauthorized');
@@ -82,12 +81,10 @@ router.post('/issue', async (req, res) => {
         .prepare('SELECT id FROM tickets WHERE payment_id = ?')
         .get(String(payment_id));
       if (found?.id) {
-        // ya existe, no duplicamos ni reenviamos correo
         return res.json({ ok: true, id: found.id, reused: true });
       }
     }
 
-    // Insert
     const ticketId = id || uuidv4();
     db.prepare(
       `INSERT INTO tickets
@@ -107,7 +104,7 @@ router.post('/issue', async (req, res) => {
       payment_id ? String(payment_id) : null
     );
 
-    // Generar PDF
+    // PDF
     const verifyUrl = `${baseUrl()}/t/${ticketId}`;
     const pdfPath = await createTicketPDF({
       ticket: {
@@ -125,7 +122,7 @@ router.post('/issue', async (req, res) => {
       senderName: process.env.SENDER_NAME || 'Boletera',
     });
 
-    // Enviar correo (si hay email)
+    // Email
     if (buyer_email) {
       await sendTicketEmail({
         to: buyer_email,
