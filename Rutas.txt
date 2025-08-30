@@ -24,6 +24,10 @@ Contraseña: w9eS3f3m5o
 
 __________________________________
 
+Netlify (https://app.netlify.com/teams/renee-vitelli/projects)
+https://los-miserables.netlify.app/
+__________________________________
+
 cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
 
 notepad .\src\db.js
@@ -42,21 +46,15 @@ F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter
 Pasos en PowerShell:
 
 1- Abre una ventana PowerShell y muévete a la raíz del proyecto:
-
 cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter"
 
 2- Añade los cambios (incluyendo tu nuevo payments.js):
-
 git add .
 
 3- Haz un commit con un mensaje claro:
-
-git commit -m "fix: corregir preference para números y proteger contra duplicados"
-
-git commit -m "payments.js: guardar payment_id y evitar duplicados"
+git commit -m "(algún texto)"
 
 4- Sube los cambios a GitHub:
-
 git push origin main
 
 👉 Al hacer esto, Render (que está vinculado a tu repo) debería detectar automáticamente el cambio y desplegar la nueva versión.
@@ -141,7 +139,6 @@ Guarda y reinicia el backend:
 Ctrl + C
 npm run dev
 (Server listening on http://localhost:8080)
-
 
 Para llamar un bloc de notas:
 notepad .env

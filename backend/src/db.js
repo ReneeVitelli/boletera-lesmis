@@ -1,52 +1,79 @@
 import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import path from 'node:path';
 
-const db = new Database('./tickets.db');
+const dbPath = process.env.TICKETS_DB_PATH || path.resolve('./data/tickets.db');
+const dir = path.dirname(dbPath);
+fs.mkdirSync(dir, { recursive: true });
 
-// Crear tabla tickets si no existe
-db.prepare(`
+export const db = new Database(dbPath, { verbose: null });
+
+// Esquema (y migraciones suaves)
+db.exec(`
   CREATE TABLE IF NOT EXISTS tickets (
     id TEXT PRIMARY KEY,
-    payment_id TEXT UNIQUE,        -- Nuevo: cada pago solo puede emitir una vez
     buyer_name TEXT,
     buyer_email TEXT,
     buyer_phone TEXT,
     function_id TEXT,
     function_label TEXT,
     event_title TEXT,
-    quantity INTEGER,
-    price REAL,
     currency TEXT,
-    issued_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    used INTEGER DEFAULT 0
-  )
-`).run();
+    price REAL,
+    used INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    payment_id TEXT
+  );
 
-// Insertar ticket
-export function insertTicket(ticket) {
-  return db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_tickets_function ON tickets(function_id);
+  CREATE INDEX IF NOT EXISTS idx_tickets_email ON tickets(buyer_email);
+`);
+
+try {
+  db.prepare('SELECT payment_id FROM tickets LIMIT 1').get();
+} catch {
+  db.exec('ALTER TABLE tickets ADD COLUMN payment_id TEXT');
+}
+
+// Evita duplicados por pago (idempotencia)
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS ux_tickets_payment_id
+  ON tickets(payment_id)
+  WHERE payment_id IS NOT NULL
+`);
+
+// Helpers
+export function insertTicket(t) {
+  const stmt = db.prepare(`
     INSERT INTO tickets (
-      id, payment_id, buyer_name, buyer_email, buyer_phone,
+      id, buyer_name, buyer_email, buyer_phone,
       function_id, function_label, event_title,
-      quantity, price, currency, issued_at, used
+      currency, price, used, payment_id
     ) VALUES (
-      @id, @payment_id, @buyer_name, @buyer_email, @buyer_phone,
+      @id, @buyer_name, @buyer_email, @buyer_phone,
       @function_id, @function_label, @event_title,
-      @quantity, @price, @currency, datetime('now'), 0
+      @currency, @price, 0, @payment_id
     )
-  `).run(ticket);
+  `);
+  return stmt.run(t);
 }
 
-// Buscar ticket por id (para validación QR)
 export function getTicket(id) {
-  return db.prepare(`SELECT * FROM tickets WHERE id = ?`).get(id);
+  return db.prepare('SELECT * FROM tickets WHERE id = ?').get(id);
 }
 
-// Marcar ticket como usado
-export function markTicketUsed(id) {
-  return db.prepare(`UPDATE tickets SET used = 1 WHERE id = ?`).run(id);
+export function getTicketByPaymentId(paymentId) {
+  return db.prepare('SELECT * FROM tickets WHERE payment_id = ?').get(paymentId);
 }
 
-// Verificar si ya existe un ticket por payment_id
-export function getTicketByPayment(payment_id) {
-  return db.prepare(`SELECT * FROM tickets WHERE payment_id = ?`).get(payment_id);
+export function markUsed(id) {
+  return db.prepare('UPDATE tickets SET used = 1 WHERE id = ?').run(id);
+}
+
+export function listTicketsByFunction(function_id) {
+  return db.prepare(`
+    SELECT * FROM tickets
+    WHERE function_id = ?
+    ORDER BY created_at DESC
+  `).all(function_id);
 }
