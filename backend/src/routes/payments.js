@@ -2,10 +2,10 @@ import { Router } from 'express';
 import { createPreference } from '../mercadoPago.js';
 import { v4 as uuidv4 } from 'uuid';
 
-// Node 18+ ya trae fetch global
+// Node 18+ trae fetch global
 const router = Router();
 
-// --- Utilidad: consultar el pago en Mercado Pago
+/** Consulta un pago en Mercado Pago */
 async function getPayment(paymentId, accessToken) {
   const url = `https://api.mercadopago.com/v1/payments/${paymentId}`;
   const res = await fetch(url, {
@@ -21,7 +21,7 @@ async function getPayment(paymentId, accessToken) {
   return res.json();
 }
 
-// --- Crear preferencia (Checkout Pro)
+/** Crea preferencia de pago (Checkout Pro) */
 router.post('/preference', async (req, res) => {
   try {
     const {
@@ -41,7 +41,7 @@ router.post('/preference', async (req, res) => {
       pending: pending_url || success_url || 'https://example.org/ok',
     };
 
-    const resp = await createPreference({
+    const pref = await createPreference({
       title: title || 'Boleto',
       quantity: Number(quantity || 1),
       unit_price: Number(price || 0),
@@ -49,14 +49,14 @@ router.post('/preference', async (req, res) => {
       back_urls,
       auto_return: 'approved',
       notification_url: `${process.env.BASE_URL}/api/payments/webhook`,
-      metadata: metadata || {},
+      metadata: metadata || {}, // aquí puedes mandar function_id, buyer_name, etc. desde el frontend
     });
 
     return res.json({
-      id: resp.id,
-      init_point: resp.init_point,
-      sandbox_init_point: resp.sandbox_init_point,
-      back_urls: resp.back_urls,
+      id: pref.id,
+      init_point: pref.init_point,
+      sandbox_init_point: pref.sandbox_init_point,
+      back_urls: pref.back_urls,
     });
   } catch (err) {
     console.error('[preferencia] ERROR:', err?.message || err);
@@ -66,19 +66,19 @@ router.post('/preference', async (req, res) => {
   }
 });
 
-// --- Webhook: delega emisión al endpoint interno /api/tickets/issue (sin importar tickets.js)
+/** Webhook de Mercado Pago (idempotente con payment_id) */
 router.post('/webhook', async (req, res) => {
   try {
     const accessToken = process.env.MP_ACCESS_TOKEN;
     const q = req.query || {};
     const body = req.body || {};
 
-    // Normaliza posibles formas de recibir el id
+    // Normaliza el ID y el tipo
     let paymentId =
       q['data.id'] || q.id || body?.data?.id || body?.id || body?.resource;
     const type = q.type || q.topic || body?.type || body?.topic;
 
-    // Ignora eventos que no sean de payment (merchant_order, etc.)
+    // Ignora eventos que no sean de pago (merchant_order, etc.)
     if (type && !String(type).includes('payment')) {
       console.log('[webhook] ignorado type=', type, 'paymentId=', paymentId);
       return res.status(200).send('OK');
@@ -93,27 +93,31 @@ router.post('/webhook', async (req, res) => {
     const status = payment?.status;
     console.log('[webhook] payment.id=', paymentId, 'status=', status);
 
-    // Solo actuamos si está aprobado
+    // Solo procesar si está aprobado
     if (status !== 'approved') {
       return res.status(200).send('OK');
     }
 
-    // Construye datos del boleto desde metadata/payer
+    // Datos para el ticket
     const meta = payment?.metadata || {};
-    const buyer_name = `${payment?.payer?.first_name || ''} ${payment?.payer?.last_name || ''}`.trim()
-      || meta.buyer_name || '—';
+    const buyer_name =
+      `${payment?.payer?.first_name || ''} ${payment?.payer?.last_name || ''}`.trim() ||
+      meta.buyer_name ||
+      '—';
     const buyer_email = payment?.payer?.email || meta.buyer_email || '';
     const function_id = meta.function_id || 'funcion-1';
     const function_label = meta.function_label || 'Función';
     const event_title = process.env.EVENT_TITLE || 'Evento';
     const currency = payment?.currency_id || process.env.CURRENCY || 'MXN';
     const amount =
-      Number(payment?.transaction_amount || meta.price || process.env.PRICE_GENERAL || 0) || 0;
+      Number(
+        payment?.transaction_amount || meta.price || process.env.PRICE_GENERAL || 0
+      ) || 0;
 
-    // Genera un id de boleto y delega emisión a /api/tickets/issue
+    // Genera un id de boleto y delega emisión al endpoint interno
     const ticketId = uuidv4();
+    const origin = process.env.BASE_URL || 'http://localhost:8080';
 
-    const origin = process.env.BASE_URL;
     const issueRes = await fetch(`${origin}/api/tickets/issue`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -127,6 +131,7 @@ router.post('/webhook', async (req, res) => {
         event_title,
         currency,
         price: amount,
+        payment_id: String(paymentId), // ← clave para idempotencia
       }),
     });
 
@@ -134,11 +139,12 @@ router.post('/webhook', async (req, res) => {
     return res.status(200).send('OK');
   } catch (err) {
     console.error('[webhook] ERROR:', err?.message || err);
-    return res.status(200).send('OK'); // respondemos 200 para que MP no reintente agresivo
+    // Respondemos 200 para evitar reintentos agresivos de MP
+    return res.status(200).send('OK');
   }
 });
 
-// --- Compatibilidad con ruta en español
+/** Alias en español: /api/pagos/webhook → /api/payments/webhook */
 router.post('/pagos/webhook', (req, res, next) => {
   req.url = '/webhook';
   next();

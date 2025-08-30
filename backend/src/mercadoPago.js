@@ -1,8 +1,21 @@
 import mercadopago from 'mercadopago';
 
 export function initMP() {
-  // SDK v2
-  mercadopago.configurations.setAccessToken(process.env.MP_ACCESS_TOKEN);
+  const token = process.env.MP_ACCESS_TOKEN;
+  if (!token) {
+    console.warn('[mercadoPago] MP_ACCESS_TOKEN no definido');
+  }
+
+  // SDK v2 (moderno) o fallback a v1 (legacy)
+  if (mercadopago?.configurations?.setAccessToken) {
+    mercadopago.configurations.setAccessToken(token);
+    console.log('[mercadoPago] SDK v2: configurations.setAccessToken OK');
+  } else if (typeof mercadopago?.configure === 'function') {
+    mercadopago.configure({ access_token: token });
+    console.log('[mercadoPago] SDK v1: configure OK');
+  } else {
+    throw new Error('[mercadoPago] SDK no compatible: ni configurations.setAccessToken ni configure disponibles');
+  }
 }
 
 export async function createPreference({
@@ -38,5 +51,5 @@ export async function createPreference({
   };
 
   const pref = await mercadopago.preferences.create(preference);
-  return pref.body;
+  return pref.body ?? pref;
 }
