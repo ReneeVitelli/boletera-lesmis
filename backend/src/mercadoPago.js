@@ -1,23 +1,21 @@
-import mercadopago from 'mercadopago';
+// SDK v2 (clases)
+import MercadoPagoConfig, { Preference } from 'mercadopago';
+
+let mpClient = null;
 
 export function initMP() {
   const token = process.env.MP_ACCESS_TOKEN;
   if (!token) {
     console.warn('[mercadoPago] MP_ACCESS_TOKEN no definido');
   }
-
-  // SDK v2 (moderno) o fallback a v1 (legacy)
-  if (mercadopago?.configurations?.setAccessToken) {
-    mercadopago.configurations.setAccessToken(token);
-    console.log('[mercadoPago] SDK v2: configurations.setAccessToken OK');
-  } else if (typeof mercadopago?.configure === 'function') {
-    mercadopago.configure({ access_token: token });
-    console.log('[mercadoPago] SDK v1: configure OK');
-  } else {
-    throw new Error('[mercadoPago] SDK no compatible: ni configurations.setAccessToken ni configure disponibles');
-  }
+  // Crea el cliente v2
+  mpClient = new MercadoPagoConfig({ accessToken: token });
+  console.log('[mercadoPago] SDK v2 inicializado con MercadoPagoConfig');
 }
 
+/**
+ * Crea una preferencia de Checkout Pro usando la SDK v2
+ */
 export async function createPreference({
   title,
   quantity,
@@ -28,10 +26,14 @@ export async function createPreference({
   notification_url,
   metadata = {},
 }) {
+  if (!mpClient) {
+    throw new Error('[mercadoPago] mpClient no inicializado. Llama initMP() primero.');
+  }
+
   const qty = Number(quantity || 1);
   const price = Number(unit_price || 0);
 
-  const preference = {
+  const body = {
     items: [
       {
         title: title || 'Boleto',
@@ -50,6 +52,9 @@ export async function createPreference({
     metadata,
   };
 
-  const pref = await mercadopago.preferences.create(preference);
-  return pref.body ?? pref;
+  const preference = new Preference(mpClient);
+  // En v2 se usa { body: ... }
+  const resp = await preference.create({ body });
+  // La v2 devuelve el objeto directamente (sin .body)
+  return resp;
 }
