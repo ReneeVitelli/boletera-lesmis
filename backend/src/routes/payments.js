@@ -71,7 +71,7 @@ router.post('/webhook', async (req, res) => {
 
       try {
         await issueTickets({
-          payment_id: paymentId,
+          payment_id: paymentId, // 🔑 ahora lo pasamos al insert
           buyer_name: mpData.payer?.first_name || '',
           buyer_email: mpData.payer?.email || '',
           buyer_phone: mpData.payer?.phone?.number || '',
