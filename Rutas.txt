@@ -28,7 +28,38 @@ cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Start
 
 notepad .\src\db.js
 notepad .\src/routes/tickets.js
+notepad .\src/mercadoPago.js
+notepad .\src/routes/payments.js
 
+__________________________________
+
+Para subir los cambios a GitHub, necesitas estar ubicada en la carpeta raíz de tu proyecto, que es donde está el archivo .git (es decir, el repositorio que inicializamos con git init).
+
+En tu caso esa carpeta raíz es:
+
+F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter
+
+Pasos en PowerShell:
+
+1- Abre una ventana PowerShell y muévete a la raíz del proyecto:
+
+cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter"
+
+2- Añade los cambios (incluyendo tu nuevo payments.js):
+
+git add .
+
+3- Haz un commit con un mensaje claro:
+
+git commit -m "fix: corregir preference para números y proteger contra duplicados"
+
+4- Sube los cambios a GitHub:
+
+git push origin main
+
+👉 Al hacer esto, Render (que está vinculado a tu repo) debería detectar automáticamente el cambio y desplegar la nueva versión.
+
+Si no lo hace solo, puedes entrar a Render → tu servicio boletera-backend → botón Manual Deploy → Deploy latest commit.
 __________________________________
 
 Ruta de la carpeta raíz del proyecto...
