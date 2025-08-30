@@ -1,77 +1,61 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-
-const API_BASE =
-  import.meta.env.VITE_API_BASE ||
-  import.meta.env.VITE_API_BASE_URL ||
-  'https://boletera-backend.onrender.com';
-
-async function handlePay() {
-  try {
-    const payload = {
-      title: 'Función 1 (Jue)',
-      quantity: 1,
-      price: 150,
-      currency: 'MXN',
-      success_url: 'https://los-miserables.netlify.app/?ok=1',
-    };
-
-    const resp = await fetch(`${API_BASE}/api/payments/preference`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!resp.ok) {
-      let msg = 'Error creando preferencia';
-      try {
-        const err = await resp.json();
-        msg = err?.details || err?.error || msg;
-      } catch {}
-      alert(msg);
-      return;
-    }
-
-    const data = await resp.json();
-    const url = data.sandbox_init_point || data.init_point;
-    if (!url) {
-      alert('No se recibió init_point de Mercado Pago.');
-      console.error('Respuesta sin init_point:', data);
-      return;
-    }
-
-    window.location.href = url; // redirige al checkout
-  } catch (e) {
-    console.error(e);
-    alert('Error creando preferencia');
-  }
-}
+import { useState } from "react";
 
 export default function Comprar() {
+  const [loading, setLoading] = useState(false);
+  const [selectedFunction, setSelectedFunction] = useState({
+    id: "funcion-1",
+    label: "Función 1 - Jue 12 Sep 2025 19:00",
+    price: 350,
+  });
+
+  async function handlePay() {
+    try {
+      setLoading(true);
+
+      const resp = await fetch(
+        `${import.meta.env.VITE_API_BASE}/api/payments/preference`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: selectedFunction?.label || "Boleto",
+            quantity: 1,
+            price: selectedFunction?.price || 350,
+            currency: "MXN",
+            success_url: window.location.origin + "/?ok=1",
+            metadata: {
+              function_id: selectedFunction?.id,
+              function_label: selectedFunction?.label,
+              buyer_name: "Prueba Frontend",
+              buyer_email: "prueba@example.com",
+            },
+          }),
+        }
+      );
+
+      const text = await resp.text();
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} - ${text}`);
+      const pref = JSON.parse(text);
+
+      // Redirige a sandbox o checkout normal
+      window.location.href = pref.sandbox_init_point || pref.init_point;
+    } catch (e) {
+      console.error("[pref] error:", e);
+      alert(`Error creando preferencia:\n${e?.message || e}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div style={{ padding: 24, maxWidth: 620 }}>
-      <p>
-        <Link to="/">Boletera – Les Misérables</Link>
-      </p>
-      <h1>Función 1 (Jue)</h1>
-      <p>Al hacer clic irás al checkout de Mercado Pago (sandbox).</p>
+    <div style={{ padding: 20 }}>
+      <h2>Comprar boleto</h2>
+      <p>{selectedFunction.label}</p>
+      <p>Precio: {selectedFunction.price} MXN</p>
 
-      <button
-        onClick={handlePay}
-        style={{
-          background: '#000',
-          color: '#fff',
-          border: 'none',
-          padding: '12px 18px',
-          borderRadius: 8,
-          cursor: 'pointer',
-          fontWeight: 600,
-        }}
-      >
-        Pagar $150 MXN (sandbox)
+      <button onClick={handlePay} disabled={loading}>
+        {loading ? "Procesando..." : `Pagar $${selectedFunction.price} MXN (sandbox)`}
       </button>
-
-      <p style={{ marginTop: 24 }}>© 2025 Taller de Teatro</p>
     </div>
   );
 }

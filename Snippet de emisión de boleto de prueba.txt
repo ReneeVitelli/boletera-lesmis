@@ -1,5 +1,29 @@
 📌 Snippet de emisión de boleto de prueba
 
+$body = @{
+  buyer_name     = "Prueba directa"
+  buyer_email    = "renee.vitelli@gmail.com"   # ← tu correo real (destinatario)
+  buyer_phone    = "5555555555"
+  function_id    = "funcion-1"
+  function_label = "Función 1 - Jue 12 Sep 2025 19:00"
+  quantity       = 1
+  price          = 350
+  currency       = "MXN"
+  event_title    = "Los Miserables"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method POST `
+  -Uri "https://boletera-backend.onrender.com/api/tickets/issue" `
+  -ContentType "application/json" `
+  -Body $body `
+  -Headers @{ "X-ISSUE-KEY" = "P4t0-TeAtr0-2025-!" }
+
+
+________________________________________
+
+
+📌 Snippet de emisión de boleto de prueba
+
 ¡Excelente, Renèe! 😄 Ahora sí te preparo tu snippet listo para usar, con tu correo real ya puesto. Así, cada vez que quieras generar un boleto de prueba, solo copias y pegas este bloque en una ventana nueva de PowerShell (dejando backend, frontend y cloudflared corriendo como siempre).
 
 Invoke-RestMethod -Method POST `

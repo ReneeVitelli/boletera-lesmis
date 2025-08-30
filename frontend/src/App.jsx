@@ -1,19 +1,21 @@
-import React from 'react';
-import { Outlet, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import Home from "./pages/Home.jsx";
+import Comprar from "./pages/Comprar.jsx";
 
-export default function App(){
+export default function App() {
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <header className="mx-auto max-w-5xl px-4 py-6 flex items-center justify-between">
-        <Link to="/" className="text-xl font-bold">Boletera – Les Misérables</Link>
-        <nav className="flex gap-4">
-          <Link to="/comprar" className="hover:underline">Comprar</Link>
+    <Router>
+      <div>
+        <nav style={{ padding: "10px", borderBottom: "1px solid #ccc" }}>
+          <Link to="/" style={{ marginRight: "15px" }}>Inicio</Link>
+          <Link to="/comprar">Comprar</Link>
         </nav>
-      </header>
-      <main className="mx-auto max-w-5xl px-4 pb-16">
-        <Outlet />
-      </main>
-      <footer className="text-center text-sm py-8 text-gray-500">© {new Date().getFullYear()} Taller de Teatro</footer>
-    </div>
+
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/comprar" element={<Comprar />} />
+        </Routes>
+      </div>
+    </Router>
   );
 }
