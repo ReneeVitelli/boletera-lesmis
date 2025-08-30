@@ -53,6 +53,8 @@ git add .
 
 git commit -m "fix: corregir preference para números y proteger contra duplicados"
 
+git commit -m "payments.js: guardar payment_id y evitar duplicados"
+
 4- Sube los cambios a GitHub:
 
 git push origin main

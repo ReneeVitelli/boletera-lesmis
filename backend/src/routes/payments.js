@@ -1,14 +1,39 @@
 import { Router } from 'express';
 import { createPreference } from '../mercadoPago.js';
-import { issueTickets } from '../tickets.js';
-import fetch from 'node-fetch';
+import { v4 as uuidv4 } from 'uuid';
 
+// Node 18+ ya trae fetch global
 const router = Router();
+
+// --- Utilidad: consultar el pago en Mercado Pago
+async function getPayment(paymentId, accessToken) {
+  const url = `https://api.mercadopago.com/v1/payments/${paymentId}`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`[MP getPayment] ${res.status} ${txt}`);
+  }
+  return res.json();
+}
 
 // --- Crear preferencia (Checkout Pro)
 router.post('/preference', async (req, res) => {
   try {
-    const { title, quantity, price, currency, success_url, failure_url, pending_url, metadata } = req.body || {};
+    const {
+      title,
+      quantity,
+      price,
+      currency,
+      success_url,
+      failure_url,
+      pending_url,
+      metadata,
+    } = req.body || {};
 
     const back_urls = {
       success: success_url || 'https://example.org/ok',
@@ -35,65 +60,88 @@ router.post('/preference', async (req, res) => {
     });
   } catch (err) {
     console.error('[preferencia] ERROR:', err?.message || err);
-    return res.status(500).json({ error: 'preference_failed', details: String(err?.message || err) });
+    return res
+      .status(500)
+      .json({ error: 'preference_failed', details: String(err?.message || err) });
   }
 });
 
-// --- Webhook de Mercado Pago
+// --- Webhook: delega emisión al endpoint interno /api/tickets/issue (sin importar tickets.js)
 router.post('/webhook', async (req, res) => {
   try {
-    const query = req.query;
-    const body = req.body;
+    const accessToken = process.env.MP_ACCESS_TOKEN;
+    const q = req.query || {};
+    const body = req.body || {};
 
-    console.log('[webhook] query:', query);
-    console.log('[webhook] body:', body);
+    // Normaliza posibles formas de recibir el id
+    let paymentId =
+      q['data.id'] || q.id || body?.data?.id || body?.id || body?.resource;
+    const type = q.type || q.topic || body?.type || body?.topic;
 
-    // Determinar paymentId
-    let paymentId = null;
-    if (query['data.id']) paymentId = query['data.id'];
-    if (query.id && query.topic === 'payment') paymentId = query.id;
-    if (body?.data?.id) paymentId = body.data.id;
-
-    if (!paymentId) {
-      console.log('[webhook] sin paymentId o no es de tipo payment.', 'type=', query?.topic || body?.type, ' paymentId=', paymentId);
+    // Ignora eventos que no sean de payment (merchant_order, etc.)
+    if (type && !String(type).includes('payment')) {
+      console.log('[webhook] ignorado type=', type, 'paymentId=', paymentId);
       return res.status(200).send('OK');
     }
 
-    // Consultar pago
-    const url = `https://api.mercadopago.com/v1/payments/${paymentId}`;
-    const mpResp = await fetch(url, {
-      headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
-    });
-    const mpData = await mpResp.json();
-
-    if (mpData?.status === 'approved') {
-      console.log('[webhook] payment.id=', paymentId, 'status=', mpData.status);
-
-      try {
-        await issueTickets({
-          payment_id: paymentId, // 🔑 ahora lo pasamos al insert
-          buyer_name: mpData.payer?.first_name || '',
-          buyer_email: mpData.payer?.email || '',
-          buyer_phone: mpData.payer?.phone?.number || '',
-          quantity: mpData.additional_info?.items?.[0]?.quantity || 1,
-          price: mpData.transaction_details?.total_paid_amount || 0,
-          currency: mpData.currency_id || 'MXN',
-          function_label: mpData.additional_info?.items?.[0]?.title || 'Función',
-          event_title: process.env.EVENT_TITLE || 'Evento',
-        });
-      } catch (e) {
-        if (String(e?.message || '').includes('SQLITE_CONSTRAINT')) {
-          console.log('[webhook] duplicado ignorado');
-        } else {
-          console.error('[webhook] Error de inserción en la base de datos:', e);
-        }
-      }
+    if (!paymentId) {
+      console.log('[webhook] sin paymentId. query:', q, ' body:', body);
+      return res.status(200).send('OK');
     }
+
+    const payment = await getPayment(paymentId, accessToken);
+    const status = payment?.status;
+    console.log('[webhook] payment.id=', paymentId, 'status=', status);
+
+    // Solo actuamos si está aprobado
+    if (status !== 'approved') {
+      return res.status(200).send('OK');
+    }
+
+    // Construye datos del boleto desde metadata/payer
+    const meta = payment?.metadata || {};
+    const buyer_name = `${payment?.payer?.first_name || ''} ${payment?.payer?.last_name || ''}`.trim()
+      || meta.buyer_name || '—';
+    const buyer_email = payment?.payer?.email || meta.buyer_email || '';
+    const function_id = meta.function_id || 'funcion-1';
+    const function_label = meta.function_label || 'Función';
+    const event_title = process.env.EVENT_TITLE || 'Evento';
+    const currency = payment?.currency_id || process.env.CURRENCY || 'MXN';
+    const amount =
+      Number(payment?.transaction_amount || meta.price || process.env.PRICE_GENERAL || 0) || 0;
+
+    // Genera un id de boleto y delega emisión a /api/tickets/issue
+    const ticketId = uuidv4();
+
+    const origin = process.env.BASE_URL;
+    const issueRes = await fetch(`${origin}/api/tickets/issue`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: ticketId,
+        buyer_name,
+        buyer_email,
+        buyer_phone: meta.buyer_phone || '',
+        function_id,
+        function_label,
+        event_title,
+        currency,
+        price: amount,
+      }),
+    });
+
+    console.log('[webhook] issue tickets ->', issueRes.status);
     return res.status(200).send('OK');
   } catch (err) {
     console.error('[webhook] ERROR:', err?.message || err);
-    return res.status(500).send('fail');
+    return res.status(200).send('OK'); // respondemos 200 para que MP no reintente agresivo
   }
+});
+
+// --- Compatibilidad con ruta en español
+router.post('/pagos/webhook', (req, res, next) => {
+  req.url = '/webhook';
+  next();
 });
 
 export default router;
