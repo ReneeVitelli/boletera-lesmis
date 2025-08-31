@@ -1,31 +1,22 @@
+// backend/src/routes/tickets.js
 import { Router } from 'express';
-import { v4 as uuidv4 } from 'uuid';
 import db from '../db.js';
 import { createTicketPDF } from '../pdf.js';
 import { sendTicketEmail } from '../mailer.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
-/** Middleware SOLO para rutas protegidas (emisión) */
-function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'];
-  const expected = process.env.ISSUE_API_KEY;
-  if (!expected) {
-    console.error('[tickets] Falta ISSUE_API_KEY en variables de entorno');
-    return res.status(500).json({ error: 'server_misconfigured' });
-  }
-  if (key !== expected) {
-    return res.status(403).json({ error: 'forbidden' });
-  }
-  next();
-}
-
-/**
- * POST /api/tickets/issue
- * Emite boletos (protegido por API KEY)
- */
-router.post('/issue', requireApiKey, async (req, res) => {
+/** Emisión manual/administrativa (protegida por x-api-key si está configurada) */
+router.post('/issue', async (req, res) => {
   try {
+    // Seguridad opcional por API key
+    const requiredKey = (process.env.ISSUE_API_KEY || '').trim();
+    const givenKey = (req.get('x-api-key') || '').trim();
+    if (requiredKey && givenKey !== requiredKey) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
     const {
       id,
       buyer_name,
@@ -34,83 +25,105 @@ router.post('/issue', requireApiKey, async (req, res) => {
       function_id,
       function_label,
       event_title,
-      currency,
       price,
-      payment_id,
-      quantity = 1,
+      currency,
+      payment_id, // opcional
     } = req.body || {};
 
-    if (!buyer_email) {
-      return res.status(400).json({ error: 'missing_email' });
+    const ticket = {
+      id: id || uuidv4(),
+      buyer_name: (buyer_name || '').trim(),
+      buyer_email: (buyer_email || '').trim(),
+      buyer_phone: (buyer_phone || '').trim(),
+      function_id: (function_id || 'funcion-1').trim(),
+      function_label: (function_label || 'Función').trim(),
+      event_title: (event_title || process.env.EVENT_TITLE || 'Evento').trim(),
+      price: Number(price || process.env.PRICE_GENERAL || 0),
+      currency: (currency || process.env.CURRENCY || 'MXN').trim(),
+      payment_id: payment_id ? String(payment_id) : null,
+      used: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Idempotencia por payment_id si viene
+    if (ticket.payment_id) {
+      const existing = db.prepare('SELECT id FROM tickets WHERE payment_id = ?').get(ticket.payment_id);
+      if (existing) {
+        return res.json({ ok: true, id: existing.id, reused: true });
+      }
     }
 
-    const ticketId = id || uuidv4();
-
-    // Inserta en DB
-    const stmt = db.prepare(
-      `INSERT INTO tickets 
-       (id, buyer_name, buyer_email, buyer_phone, function_id, function_label, event_title, currency, price, payment_id, used)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
-    );
-    stmt.run(
-      ticketId,
-      buyer_name || '—',
-      buyer_email,
-      buyer_phone || '',
-      function_id || 'funcion-1',
-      function_label || 'Función',
-      event_title || process.env.EVENT_TITLE || 'Evento',
-      currency || process.env.CURRENCY || 'MXN',
-      price || process.env.PRICE_GENERAL || 0,
-      payment_id || null
-    );
+    // Inserta
+    const insert = db.prepare(`
+      INSERT INTO tickets (id, buyer_name, buyer_email, buyer_phone, function_id, function_label,
+                           event_title, price, currency, used, payment_id, created_at, updated_at)
+      VALUES (@id, @buyer_name, @buyer_email, @buyer_phone, @function_id, @function_label,
+              @event_title, @price, @currency, @used, @payment_id, @created_at, @updated_at)
+    `);
+    insert.run(ticket);
 
     // Genera PDF
-    const filePath = await createTicketPDF({
-      ticket: {
-        id: ticketId,
-        buyer_name,
-        buyer_email,
-        buyer_phone,
-        function_id,
-        function_label,
-        event_title,
-        currency,
-        price,
-      },
-      baseUrl: process.env.BASE_URL || 'http://localhost:8080',
-      senderName: 'Boletera',
+    const baseUrl = (process.env.PUBLIC_BASE_URL || '').trim() || (process.env.BASE_URL || '').trim() || '';
+    const senderName = process.env.SENDER_NAME || 'Boletera';
+    const pdfPath = await createTicketPDF({ ticket, baseUrl, senderName });
+
+    // Asegura destinatario ANTES de enviar
+    const resolvedTo =
+      ticket.buyer_email ||
+      (process.env.SENDER_EMAIL || '').trim() ||
+      (process.env.SMTP_USER || '').trim();
+
+    console.log('[tickets] destinatario resuelto =', resolvedTo || '(vacío)');
+
+    const html = `
+      <p>¡Gracias por tu compra!</p>
+      <p><b>${ticket.event_title}</b><br/>
+      ${ticket.function_label}</p>
+      <p><b>Boleto:</b> ${ticket.id}</p>
+      <p>Puedes presentar el QR en la entrada. También puedes validar aquí:<br/>
+      <a href="${baseUrl}/t/${ticket.id}">${baseUrl}/t/${ticket.id}</a></p>
+    `;
+
+    // Envía correo (mailer.js también valida y hace fallback)
+    const subject = `Tus boletos – ${ticket.event_title}`;
+    await sendTicketEmail({
+      to: resolvedTo,
+      subject,
+      html,
+      attachments: [
+        {
+          filename: `boleto-${ticket.id}.pdf`,
+          path: pdfPath,
+          contentType: 'application/pdf',
+        },
+      ],
     });
 
-    // Envía correo
-    await sendTicketEmail(buyer_email, filePath);
-
-    console.log('[tickets] boleto emitido:', ticketId);
-    return res.json({ ok: true, id: ticketId });
+    return res.json({ ok: true, id: ticket.id });
   } catch (err) {
-    console.error('[tickets] ERROR:', err);
-    return res.status(500).json({ error: 'issue_failed', details: String(err) });
+    console.error('[tickets] ERROR:', err?.message || err);
+    return res.status(500).json({ error: 'issue_failed', details: String(err?.message || err) });
   }
 });
 
-/**
- * POST /api/tickets/:id/use
- * Marcar boleto como usado (SIN API KEY para poder hacerlo desde el navegador)
- */
-router.post('/:id/use', (req, res) => {
+/** Marca ticket como usado */
+router.post('/:id/use', async (req, res) => {
   try {
-    const id = req.params.id;
-    const stmt = db.prepare('UPDATE tickets SET used = 1 WHERE id = ?');
-    const result = stmt.run(id);
+    const tid = (req.params?.id || '').trim();
+    if (!tid) return res.status(400).json({ error: 'bad_request' });
 
-    if (result.changes === 0) {
-      return res.status(404).json({ ok: false, error: 'not_found' });
+    const row = db.prepare('SELECT id, used FROM tickets WHERE id = ?').get(tid);
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    if (Number(row.used) === 1) {
+      return res.json({ ok: true, id: tid, already: true });
     }
 
-    return res.json({ ok: true, id, used: 1 });
+    db.prepare('UPDATE tickets SET used = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), tid);
+    return res.json({ ok: true, id: tid, used: true });
   } catch (err) {
-    console.error('[tickets/use] ERROR:', err);
-    return res.status(500).json({ error: 'use_failed' });
+    console.error('[tickets/use] ERROR:', err?.message || err);
+    return res.status(500).json({ error: 'use_failed', details: String(err?.message || err) });
   }
 });
 
