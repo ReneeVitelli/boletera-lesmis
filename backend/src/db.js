@@ -5,13 +5,14 @@ import path from 'node:path';
 const DATA_DIR = process.env.DATA_DIR || './data';
 const DB_PATH = path.join(DATA_DIR, 'tickets.db');
 
-// Asegura carpeta de datos
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// Abre DB
 const db = new Database(DB_PATH);
 
-// Esquema mínimo
+/**
+ * Crea la tabla si no existe (no modifica esquemas existentes).
+ * Si la tabla ya existía con menos columnas, luego migramos con ALTER TABLE.
+ */
 db.exec(`
   CREATE TABLE IF NOT EXISTS tickets (
     id TEXT PRIMARY KEY,
@@ -26,10 +27,37 @@ db.exec(`
     payment_id TEXT,
     used INTEGER DEFAULT 0
   );
-
-  CREATE INDEX IF NOT EXISTS idx_tickets_used ON tickets(used);
-  CREATE INDEX IF NOT EXISTS idx_tickets_payment ON tickets(payment_id);
 `);
+
+/** ===== MIGRACIÓN DE ESQUEMA (agrega columnas que falten) ===== */
+(function migrate() {
+  const rows = db.prepare(`PRAGMA table_info(tickets)`).all();
+  const has = (name) => rows.some(r => r.name === name);
+
+  const addColumn = (sql) => db.exec(sql);
+
+  // Lista de columnas esperadas (con sus ALTER TABLE)
+  const needed = [
+    { name: 'buyer_phone', sql: `ALTER TABLE tickets ADD COLUMN buyer_phone TEXT;` },
+    { name: 'function_id', sql: `ALTER TABLE tickets ADD COLUMN function_id TEXT;` },
+    { name: 'function_label', sql: `ALTER TABLE tickets ADD COLUMN function_label TEXT;` },
+    { name: 'event_title', sql: `ALTER TABLE tickets ADD COLUMN event_title TEXT;` },
+    { name: 'currency', sql: `ALTER TABLE tickets ADD COLUMN currency TEXT;` },
+    { name: 'price', sql: `ALTER TABLE tickets ADD COLUMN price REAL;` },
+    { name: 'payment_id', sql: `ALTER TABLE tickets ADD COLUMN payment_id TEXT;` },
+    { name: 'used', sql: `ALTER TABLE tickets ADD COLUMN used INTEGER DEFAULT 0;` },
+  ];
+
+  for (const col of needed) {
+    if (!has(col.name)) addColumn(col.sql);
+  }
+
+  // Índices (ya con columnas presentes)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tickets_used ON tickets(used);
+    CREATE INDEX IF NOT EXISTS idx_tickets_payment ON tickets(payment_id);
+  `);
+})();
 
 /** =========================
  *  Helpers usados por app.js
@@ -52,7 +80,7 @@ export function markUsed(id) {
   return result.changes > 0;
 }
 
-/** (Opcional) Inserta un ticket – por si en algún sitio lo necesitas */
+/** Inserta un ticket (utilidad) */
 export function insertTicket(t) {
   const stmt = db.prepare(
     `INSERT INTO tickets
@@ -66,5 +94,5 @@ export function insertTicket(t) {
   );
 }
 
-// Export por defecto del handle de DB (por compatibilidad con otros módulos)
+// Export default para compatibilidad
 export default db;
