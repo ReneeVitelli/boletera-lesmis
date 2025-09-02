@@ -1,22 +1,33 @@
 // backend/src/routes/tickets.js
 import { Router } from 'express';
-import db from '../db.js';
+import { v4 as uuidv4 } from 'uuid';
+
+import { insertTicket, getTicket, markUsed } from '../db.js';
 import { createTicketPDF } from '../pdf.js';
 import { sendTicketEmail } from '../mailer.js';
-import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
-/** Emisión manual/administrativa (protegida por x-api-key si está configurada) */
-router.post('/issue', async (req, res) => {
-  try {
-    // Seguridad opcional por API key
-    const requiredKey = (process.env.ISSUE_API_KEY || '').trim();
-    const givenKey = (req.get('x-api-key') || '').trim();
-    if (requiredKey && givenKey !== requiredKey) {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
+// Middleware de autenticación para emisión (clave sencilla por header)
+function requireIssueKey(req, res, next) {
+  const expected = process.env.ISSUE_API_KEY || '';
+  const got =
+    req.get('X-API-Key') ||
+    req.get('X-Issue-Key') || // compatibilidad con llamadas anteriores
+    '';
+  if (!expected || got !== expected) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  next();
+}
 
+/**
+ * POST /api/tickets/issue
+ * Emite un boleto, genera PDF y envía correo.
+ * Requiere cabecera: X-API-Key: <ISSUE_API_KEY>
+ */
+router.post('/issue', requireIssueKey, async (req, res) => {
+  try {
     const {
       id,
       buyer_name,
@@ -25,105 +36,94 @@ router.post('/issue', async (req, res) => {
       function_id,
       function_label,
       event_title,
-      price,
       currency,
-      payment_id, // opcional
+      price,
+      payment_id, // opcional (lo manda el webhook)
     } = req.body || {};
 
-    const ticket = {
-      id: id || uuidv4(),
-      buyer_name: (buyer_name || '').trim(),
-      buyer_email: (buyer_email || '').trim(),
-      buyer_phone: (buyer_phone || '').trim(),
-      function_id: (function_id || 'funcion-1').trim(),
-      function_label: (function_label || 'Función').trim(),
-      event_title: (event_title || process.env.EVENT_TITLE || 'Evento').trim(),
-      price: Number(price || process.env.PRICE_GENERAL || 0),
-      currency: (currency || process.env.CURRENCY || 'MXN').trim(),
-      payment_id: payment_id ? String(payment_id) : null,
-      used: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    // Idempotencia por payment_id si viene
-    if (ticket.payment_id) {
-      const existing = db.prepare('SELECT id FROM tickets WHERE payment_id = ?').get(ticket.payment_id);
-      if (existing) {
-        return res.json({ ok: true, id: existing.id, reused: true });
-      }
+    if (!buyer_email || String(buyer_email).trim() === '') {
+      return res.status(400).json({ error: 'missing_buyer_email' });
     }
 
-    // Inserta
-    const insert = db.prepare(`
-      INSERT INTO tickets (id, buyer_name, buyer_email, buyer_phone, function_id, function_label,
-                           event_title, price, currency, used, payment_id, created_at, updated_at)
-      VALUES (@id, @buyer_name, @buyer_email, @buyer_phone, @function_id, @function_label,
-              @event_title, @price, @currency, @used, @payment_id, @created_at, @updated_at)
-    `);
-    insert.run(ticket);
-
-    // Genera PDF
-    const baseUrl = (process.env.PUBLIC_BASE_URL || '').trim() || (process.env.BASE_URL || '').trim() || '';
+    const ticketId = id || uuidv4();
+    const baseUrl = process.env.BASE_URL || 'http://localhost:8080';
     const senderName = process.env.SENDER_NAME || 'Boletera';
-    const pdfPath = await createTicketPDF({ ticket, baseUrl, senderName });
 
-    // Asegura destinatario ANTES de enviar
-    const resolvedTo =
-      ticket.buyer_email ||
-      (process.env.SENDER_EMAIL || '').trim() ||
-      (process.env.SMTP_USER || '').trim();
+    // Insertamos en DB
+    insertTicket({
+      id: ticketId,
+      buyer_name: buyer_name || '—',
+      buyer_email: String(buyer_email).trim(),
+      buyer_phone: buyer_phone || '',
+      function_id: function_id || 'funcion-1',
+      function_label:
+        function_label || 'Función 1 - Jue 12 Sep 2025 19:00',
+      event_title: event_title || process.env.EVENT_TITLE || 'Evento',
+      currency: currency || process.env.CURRENCY || 'MXN',
+      price: Number(price || process.env.PRICE_GENERAL || 0),
+      used: 0,
+      payment_id: payment_id ? String(payment_id) : null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
 
-    console.log('[tickets] destinatario resuelto =', resolvedTo || '(vacío)');
+    // Generamos PDF
+    const pdfPath = await createTicketPDF({
+      ticket: {
+        id: ticketId,
+        buyer_name: buyer_name || '—',
+        buyer_email: String(buyer_email).trim(),
+        function_label:
+          function_label || 'Función 1 - Jue 12 Sep 2025 19:00',
+        event_title: event_title || process.env.EVENT_TITLE || 'Evento',
+        currency: currency || process.env.CURRENCY || 'MXN',
+        price: Number(price || process.env.PRICE_GENERAL || 0),
+      },
+      baseUrl,
+      senderName,
+    });
 
-    const html = `
-      <p>¡Gracias por tu compra!</p>
-      <p><b>${ticket.event_title}</b><br/>
-      ${ticket.function_label}</p>
-      <p><b>Boleto:</b> ${ticket.id}</p>
-      <p>Puedes presentar el QR en la entrada. También puedes validar aquí:<br/>
-      <a href="${baseUrl}/t/${ticket.id}">${baseUrl}/t/${ticket.id}</a></p>
-    `;
+    // Email
+    const subject =
+      `[Boleto] ${process.env.EVENT_TITLE || 'Evento'} – ${function_label || 'Función'}`;
+    const text =
+      `¡Gracias por tu compra!\n\n` +
+      `Adjuntamos tu boleto (PDF). También puedes validarlo aquí:\n` +
+      `${baseUrl}/t/${ticketId}\n\n` +
+      `— ${senderName}`;
 
-    // Envía correo (mailer.js también valida y hace fallback)
-    const subject = `Tus boletos – ${ticket.event_title}`;
     await sendTicketEmail({
-      to: resolvedTo,
+      to: String(buyer_email).trim(),
       subject,
-      html,
+      text,
       attachments: [
         {
-          filename: `boleto-${ticket.id}.pdf`,
+          filename: `boleto-${ticketId}.pdf`,
           path: pdfPath,
           contentType: 'application/pdf',
         },
       ],
     });
 
-    return res.json({ ok: true, id: ticket.id });
+    return res.json({ ok: true, id: ticketId });
   } catch (err) {
-    console.error('[tickets] ERROR:', err?.message || err);
+    console.error('[tickets] ERROR:', err);
     return res.status(500).json({ error: 'issue_failed', details: String(err?.message || err) });
   }
 });
 
-/** Marca ticket como usado */
+/**
+ * POST /api/tickets/:id/use
+ * Marca un boleto como usado (podrías protegerlo con otra clave si quieres).
+ */
 router.post('/:id/use', async (req, res) => {
   try {
-    const tid = (req.params?.id || '').trim();
-    if (!tid) return res.status(400).json({ error: 'bad_request' });
-
-    const row = db.prepare('SELECT id, used FROM tickets WHERE id = ?').get(tid);
-    if (!row) return res.status(404).json({ error: 'not_found' });
-    if (Number(row.used) === 1) {
-      return res.json({ ok: true, id: tid, already: true });
-    }
-
-    db.prepare('UPDATE tickets SET used = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), tid);
-    return res.json({ ok: true, id: tid, used: true });
+    const id = req.params.id;
+    const ok = markUsed(id);
+    return res.json({ ok });
   } catch (err) {
-    console.error('[tickets/use] ERROR:', err?.message || err);
-    return res.status(500).json({ error: 'use_failed', details: String(err?.message || err) });
+    console.error('[tickets/use] ERROR:', err);
+    return res.status(500).json({ error: 'mark_failed', details: String(err?.message || err) });
   }
 });
 
