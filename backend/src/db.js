@@ -1,98 +1,112 @@
+// backend/src/db.js
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const DATA_DIR = process.env.DATA_DIR || './data';
-const DB_PATH = path.join(DATA_DIR, 'tickets.db');
+const DB_PATH = process.env.DB_PATH || '/var/data/tickets.db';
 
-fs.mkdirSync(DATA_DIR, { recursive: true });
+// Asegura carpeta
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
+// Abre DB
 const db = new Database(DB_PATH);
 
-/**
- * Crea la tabla si no existe (no modifica esquemas existentes).
- * Si la tabla ya existía con menos columnas, luego migramos con ALTER TABLE.
- */
+// Crea tabla base si no existe
 db.exec(`
   CREATE TABLE IF NOT EXISTS tickets (
     id TEXT PRIMARY KEY,
     buyer_name TEXT,
-    buyer_email TEXT NOT NULL,
+    buyer_email TEXT,
     buyer_phone TEXT,
     function_id TEXT,
     function_label TEXT,
     event_title TEXT,
     currency TEXT,
     price REAL,
-    payment_id TEXT,
     used INTEGER DEFAULT 0
   );
 `);
 
-/** ===== MIGRACIÓN DE ESQUEMA (agrega columnas que falten) ===== */
-(function migrate() {
-  const rows = db.prepare(`PRAGMA table_info(tickets)`).all();
-  const has = (name) => rows.some(r => r.name === name);
-
-  const addColumn = (sql) => db.exec(sql);
-
-  // Lista de columnas esperadas (con sus ALTER TABLE)
-  const needed = [
-    { name: 'buyer_phone', sql: `ALTER TABLE tickets ADD COLUMN buyer_phone TEXT;` },
-    { name: 'function_id', sql: `ALTER TABLE tickets ADD COLUMN function_id TEXT;` },
-    { name: 'function_label', sql: `ALTER TABLE tickets ADD COLUMN function_label TEXT;` },
-    { name: 'event_title', sql: `ALTER TABLE tickets ADD COLUMN event_title TEXT;` },
-    { name: 'currency', sql: `ALTER TABLE tickets ADD COLUMN currency TEXT;` },
-    { name: 'price', sql: `ALTER TABLE tickets ADD COLUMN price REAL;` },
-    { name: 'payment_id', sql: `ALTER TABLE tickets ADD COLUMN payment_id TEXT;` },
-    { name: 'used', sql: `ALTER TABLE tickets ADD COLUMN used INTEGER DEFAULT 0;` },
-  ];
-
-  for (const col of needed) {
-    if (!has(col.name)) addColumn(col.sql);
+// --- Migraciones seguras (añade columnas si faltan) ---
+function ensureColumns(table, defs) {
+  const cols = db.prepare(`PRAGMA table_info(${table});`).all();
+  const have = new Set(cols.map(c => c.name));
+  for (const def of defs) {
+    if (!have.has(def.name)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${def.name} ${def.type}${def.default ?? ''};`);
+    }
   }
+}
 
-  // Índices (ya con columnas presentes)
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_tickets_used ON tickets(used);
-    CREATE INDEX IF NOT EXISTS idx_tickets_payment ON tickets(payment_id);
-  `);
-})();
+// Añadimos columnas nuevas si faltan
+ensureColumns('tickets', [
+  { name: 'payment_id', type: 'TEXT' },
+  { name: 'pdf_path',   type: 'TEXT' },
+  { name: 'created_at', type: 'TEXT' },
+  { name: 'updated_at', type: 'TEXT' },
+]);
 
-/** =========================
- *  Helpers usados por app.js
- *  ========================= */
+// --- Helpers preparados ---
+const insertStmt = db.prepare(`
+  INSERT INTO tickets (
+    id, buyer_name, buyer_email, buyer_phone,
+    function_id, function_label, event_title,
+    currency, price, used, payment_id, pdf_path,
+    created_at, updated_at
+  ) VALUES (
+    @id, @buyer_name, @buyer_email, @buyer_phone,
+    @function_id, @function_label, @event_title,
+    @currency, @price, @used, @payment_id, @pdf_path,
+    @created_at, @updated_at
+  );
+`);
 
-/** Obtiene un ticket por id (o null si no existe) */
+const getStmt = db.prepare(`SELECT * FROM tickets WHERE id = ?;`);
+
+const markUsedStmt = db.prepare(`
+  UPDATE tickets
+     SET used = 1,
+         updated_at = @updated_at
+   WHERE id = @id;
+`);
+
+const recentStmt = db.prepare(`
+  SELECT * FROM tickets
+   ORDER BY datetime(created_at) DESC
+   LIMIT ?;
+`);
+
+// --- API ---
+export function insertTicket(ticket) {
+  const now = new Date().toISOString();
+  const row = {
+    id: ticket.id,
+    buyer_name: ticket.buyer_name ?? '—',
+    buyer_email: ticket.buyer_email ?? '',
+    buyer_phone: ticket.buyer_phone ?? '',
+    function_id: ticket.function_id ?? '',
+    function_label: ticket.function_label ?? '',
+    event_title: ticket.event_title ?? (process.env.EVENT_TITLE || 'Evento'),
+    currency: ticket.currency ?? (process.env.CURRENCY || 'MXN'),
+    price: Number(ticket.price ?? 0),
+    used: Number(ticket.used ?? 0),
+    payment_id: ticket.payment_id ? String(ticket.payment_id) : null,
+    pdf_path: ticket.pdf_path ?? null,
+    created_at: ticket.created_at ?? now,
+    updated_at: ticket.updated_at ?? now,
+  };
+  insertStmt.run(row);
+  return row.id;
+}
+
 export function getTicket(id) {
-  const stmt = db.prepare(
-    `SELECT id, buyer_name, buyer_email, buyer_phone, function_id, function_label,
-            event_title, currency, price, payment_id, used
-     FROM tickets WHERE id = ?`
-  );
-  return stmt.get(id) || null;
+  return getStmt.get(id);
 }
 
-/** Marca un ticket como usado. Devuelve true si cambió algo. */
 export function markUsed(id) {
-  const stmt = db.prepare('UPDATE tickets SET used = 1 WHERE id = ?');
-  const result = stmt.run(id);
-  return result.changes > 0;
+  return markUsedStmt.run({ id, updated_at: new Date().toISOString() }).changes > 0;
 }
 
-/** Inserta un ticket (utilidad) */
-export function insertTicket(t) {
-  const stmt = db.prepare(
-    `INSERT INTO tickets
-     (id, buyer_name, buyer_email, buyer_phone, function_id, function_label,
-      event_title, currency, price, payment_id, used)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-  return stmt.run(
-    t.id, t.buyer_name, t.buyer_email, t.buyer_phone, t.function_id, t.function_label,
-    t.event_title, t.currency, t.price, t.payment_id || null, t.used ? 1 : 0
-  );
+export function listRecent(limit = 20) {
+  return recentStmt.all(limit);
 }
-
-// Export default para compatibilidad
-export default db;
