@@ -1,9 +1,34 @@
 <!doctype html>
-<html>
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Boletera – Les Misérables</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"/>
+    <title>Los Miserables</title>
+    <!-- Bloque opcional: imprime errores en pantalla para no ver "pantalla en blanco" -->
+    <script>
+      window.addEventListener('error', (e) => {
+        const pre = document.createElement('pre');
+        pre.textContent = 'JS Error: ' + (e.error?.stack || e.message);
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.background = '#fee';
+        pre.style.border = '1px solid #f00';
+        pre.style.padding = '12px';
+        pre.style.margin = '12px';
+        document.body.prepend(pre);
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        const pre = document.createElement('pre');
+        pre.textContent = 'Unhandled Promise: ' + (e.reason?.stack || e.reason);
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.background = '#eef';
+        pre.style.border = '1px solid #00f';
+        pre.style.padding = '12px';
+        pre.style.margin = '12px';
+        document.body.prepend(pre);
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
