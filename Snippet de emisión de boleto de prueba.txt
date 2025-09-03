@@ -1,6 +1,26 @@
 📌 Snippet de emisión de boleto de prueba
 
 $body = @{
+  buyer_name     = "Prueba emisión OK"
+  buyer_email    = "renee.vitelli@gmail.com"
+  buyer_phone    = "5555555555"
+  function_id    = "funcion-1"
+  function_label = "Función 1 - Jue 12 Sep 2025 19:00"
+  quantity       = 1
+  price          = 350
+  currency       = "MXN"
+  event_title    = "Los Miserables"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method POST `
+  -Uri "https://boletera-backend.onrender.com/api/tickets/issue" `
+  -ContentType "application/json" `
+  -Headers @{ "X-API-Key" = "test-issue-key-123" } `
+  -Body $body
+
+_____________________________________
+
+$body = @{
   buyer_name     = "Prueba directa"
   buyer_email    = "renee.vitelli@gmail.com"   # ← tu correo real (destinatario)
   buyer_phone    = "5555555555"

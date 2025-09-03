@@ -30,12 +30,13 @@ __________________________________
 
 cd "F:\¡LES MISÉRABLES 2025\DOCUMENTOS\Boletos\Chat IA\Chat GPT\Boletera Starter\backend"
 
-notepad .\src\db.js
+notepad .\src\db.js (notepad ".\src\db.js")
 notepad .\src/app.js
 notepad .\src/routes/tickets.js
 notepad .\src/mercadoPago.js
 notepad .\src/routes/payments.js
-
+notepad .\src/mailer.js
+notepad .\src/pdf.js
 __________________________________
 
 Para subir los cambios a GitHub, necesitas estar ubicada en la carpeta raíz de tu proyecto, que es donde está el archivo .git (es decir, el repositorio que inicializamos con git init).

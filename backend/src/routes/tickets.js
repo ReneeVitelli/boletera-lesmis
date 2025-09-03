@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
-import { insertTicket, getTicket, markUsed } from '../db.js';
+import { insertTicket } from '../db.js';
 import { createTicketPDF } from '../pdf.js';
 import { sendTicketEmail } from '../mailer.js';
 
