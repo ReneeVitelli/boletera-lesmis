@@ -1,35 +1,80 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
-function FunctionCard({ f, onBuy }){
-  return (
-    <div style={{background:'#fff',padding:16,borderRadius:12,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-      <div>
-        <div style={{fontWeight:600}}>{f.title}</div>
-        <div style={{color:'#666'}}>{f.date} • {f.time}</div>
-        <div style={{marginTop:6,fontWeight:700}}>${f.price} MXN</div>
-      </div>
-      <button onClick={onBuy} style={{padding:'8px 12px',borderRadius:10,background:'#000',color:'#fff'}}>Comprar</button>
-    </div>
+export default function Home() {
+  const navigate = useNavigate();
+
+  // Lista base de funciones (puedes editar textos/fechas/precios)
+  const funciones = useMemo(
+    () => [
+      {
+        id: "funcion-1",
+        label: "Función 1 - Jue 12 Sep 2025 19:00",
+        price: 350,
+      },
+      {
+        id: "funcion-2",
+        label: "Función 2 - Vie 12 Sep 2025 19:00",
+        price: 350,
+      },
+      {
+        id: "funcion-3",
+        label: "Función 3 - Sáb 13 Sep 2025 17:00",
+        price: 350,
+      },
+      {
+        id: "funcion-4",
+        label: "Función 4 - Sáb 13 Sep 2025 20:00",
+        price: 350,
+      },
+    ],
+    []
   );
-}
 
-export default function Home(){
-  const nav = useNavigate();
-  const funciones = [
-    { id: 'funcion-1', title: 'Función 1 (Jue)', date: 'Jue 12 Sep 2025', time: '19:00', price: 150 },
-    { id: 'funcion-2', title: 'Función 2 (Vie)', date: 'Vie 13 Sep 2025', time: '19:00', price: 150 },
-    { id: 'funcion-3', title: 'Función 3 (Sáb)', date: 'Sáb 14 Sep 2025', time: '12:00', price: 150 },
-    { id: 'funcion-4', title: 'Función 4 (Sáb)', date: 'Sáb 14 Sep 2025', time: '18:00', price: 150 },
-  ];
+  function comprarEsta(funcion) {
+    // OPCIONAL: guarda la selección para que Comprar.jsx la pueda leer si lo habilitamos
+    try {
+      sessionStorage.setItem("selectedFunction", JSON.stringify(funcion));
+    } catch {}
+    navigate("/comprar");
+  }
 
   return (
-    <div style={{maxWidth:800,margin:'0 auto'}}>
-      <h1 style={{fontSize:22,fontWeight:700}}>Les Misérables – Funciones</h1>
-      <div style={{marginTop:16}}>
-        {funciones.map(f => (
-          <FunctionCard key={f.id} f={f} onBuy={() => nav('/comprar', { state: f })} />
+    <div style={{ padding: 20, maxWidth: 720, margin: "0 auto" }}>
+      <h1>Los Miserables</h1>
+      <p>Elige la función a la que quieres asistir y compra tus boletos.</p>
+
+      <div style={{ display: "grid", gap: 12 }}>
+        {funciones.map((f) => (
+          <div
+            key={f.id}
+            style={{
+              border: "1px solid #ddd",
+              borderRadius: 8,
+              padding: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600 }}>{f.label}</div>
+              <div style={{ color: "#555" }}>Precio: ${f.price} MXN</div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => comprarEsta(f)}>Comprar esta función</button>
+              <Link to="/comprar">
+                <button>Ir a comprar</button>
+              </Link>
+            </div>
+          </div>
         ))}
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <Link to="/comprar">Ir a comprar (sin seleccionar)</Link>
       </div>
     </div>
   );
