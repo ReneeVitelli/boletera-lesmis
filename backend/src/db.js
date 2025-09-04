@@ -33,18 +33,14 @@ function resolveDbPath() {
 const DB_PATH = resolveDbPath();
 const db = new Database(DB_PATH);
 
-/** Ejecuta múltiples sentencias SQL separadas por ';' (ignora vacías). */
+/** Ejecuta un bloque SQL tal cual (soporta triggers) dentro de una transacción. */
 function execMany(sql) {
-  const stmts = sql
-    .split(';')
-    .map(s => s.trim())
-    .filter(Boolean);
   db.exec('BEGIN');
   try {
-    for (const s of stmts) db.exec(s);
+    db.exec(sql); // no dividimos por ';' para no romper CREATE TRIGGER ... BEGIN ... END;
     db.exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    try { db.exec('ROLLBACK'); } catch (_) {}
     throw e;
   }
 }
