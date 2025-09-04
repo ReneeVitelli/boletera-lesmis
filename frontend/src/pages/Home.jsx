@@ -1,14 +1,14 @@
 import React from "react";
 
-// Importa tus imágenes desde src/assets (ojo con la ruta relativa ../)
-import banner from "../assets/banner.jpg";                // imagen principal en JPG
-import cosette from "../assets/cosette.png";              // rostro Cosette
-import postal from "../assets/postal.png";                // composición Miserables (opcional)
-import postalRecortada from "../assets/postal_recortada.png"; // versión circular (opcional)
-import barricada from "../assets/barricada.png";          // fondo barricada
-import titulo from "../assets/titulo.png";                // título Los Miserables
-
 const Home = () => {
+  // Rutas a assets servidos desde public/assets
+  const banner = "/assets/banner.jpg";
+  const cosette = "/assets/cosette.png";
+  const postal = "/assets/postal.png";                 // opcional
+  const postalRecortada = "/assets/postal_recortada.png"; // opcional
+  const barricada = "/assets/barricada.png";
+  const titulo = "/assets/titulo.png";
+
   return (
     <div className="font-sans text-gray-900">
       {/* Banner */}
@@ -18,9 +18,9 @@ const Home = () => {
           alt="Banner Los Miserables"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-black bg-opacity-40 flex flex-col items-center justify-center text-white">
+        <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
           <img src={titulo} alt="Los Miserables" className="w-80 mb-4" />
-          <p className="italic text-lg">
+          <p className="italic text-lg text-center px-4">
             “Amar, eso es lo único que puede colmar la eternidad”
           </p>
         </div>
@@ -64,7 +64,7 @@ const Home = () => {
         ></iframe>
       </div>
 
-      {/* Decoración al final (puedes cambiar qué imágenes usar) */}
+      {/* Decoración al final */}
       <div className="flex justify-center gap-6 py-10 bg-gray-100">
         <img src={cosette} alt="Cosette" className="h-40" />
         <img src={barricada} alt="Barricada" className="h-40" />
