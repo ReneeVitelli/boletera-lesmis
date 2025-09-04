@@ -1,26 +1,18 @@
 import React from "react";
 
 const Home = () => {
-  // Rutas a assets servidos desde public/assets
-  const banner = "/assets/banner.jpg";
-  const cosette = "/assets/cosette.png";
-  const postal = "/assets/postal.png";                 // opcional
-  const postalRecortada = "/assets/postal_recortada.png"; // opcional
-  const barricada = "/assets/barricada.png";
-  const titulo = "/assets/titulo.png";
-
   return (
     <div className="font-sans text-gray-900">
       {/* Banner */}
       <div className="relative w-full h-96">
         <img
-          src={banner}
+          src="/assets/banner.jpg"
           alt="Banner Los Miserables"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white">
-          <img src={titulo} alt="Los Miserables" className="w-80 mb-4" />
-          <p className="italic text-lg text-center px-4">
+        <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white text-center px-4">
+          <img src="/assets/titulo.png" alt="Los Miserables" className="w-80 mb-4" />
+          <p className="italic text-lg">
             “Amar, eso es lo único que puede colmar la eternidad”
           </p>
         </div>
@@ -66,10 +58,12 @@ const Home = () => {
 
       {/* Decoración al final */}
       <div className="flex justify-center gap-6 py-10 bg-gray-100">
-        <img src={cosette} alt="Cosette" className="h-40" />
-        <img src={barricada} alt="Barricada" className="h-40" />
-        {/* <img src={postal} alt="Composición" className="h-40" /> */}
-        {/* <img src={postalRecortada} alt="Composición circular" className="h-40 rounded-full" /> */}
+        <img src="/assets/cosette.png" alt="Cosette" className="h-40 object-contain" />
+        <img src="/assets/barricada.png" alt="Barricada" className="h-40 object-contain" />
+        {/* Opcionales:
+        <img src="/assets/postal.png" alt="Postal LS" className="h-40 object-contain" />
+        <img src="/assets/postal_recortada.png" alt="Postal (recortada)" className="h-40 object-contain" />
+        */}
       </div>
     </div>
   );
