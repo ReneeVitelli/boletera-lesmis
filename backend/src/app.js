@@ -54,7 +54,7 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, db: !!db, now: new Date().toISOString() });
 });
 
-// Lista de rutas (simple)
+// Lista de rutas
 app.get('/__routes', (_req, res) => {
   const routes = [];
   app._router.stack.forEach((m) => {
@@ -74,12 +74,15 @@ app.get('/__routes', (_req, res) => {
   res.json(routes);
 });
 
-// ==== EMITIR TICKET (emisión directa, sin MP) ====
+// ==== EMITIR TICKET (emisión directa) ====
 app.post('/api/tickets/issue', async (req, res) => {
   const authError = requireIssueKey(req, res);
   if (authError) return;
 
   try {
+    // Log de diagnóstico
+    console.log('[issue] body recibido:', req.body);
+
     const {
       buyer_name,
       buyer_email,
@@ -97,6 +100,7 @@ app.post('/api/tickets/issue', async (req, res) => {
         ok: false,
         error:
           'Faltan campos: buyer_name, buyer_email, function_id, function_label, event_title son obligatorios',
+        received: req.body,
       });
     }
 
@@ -117,7 +121,37 @@ app.post('/api/tickets/issue', async (req, res) => {
     return res.json({ ok: true, id: savedId, url: `${BASE_URL}/t/${savedId}` });
   } catch (e) {
     console.error('issue error:', e);
-    return res.status(500).json({ ok: false, error: 'No se pudo emitir', detail: String(e) });
+    return res
+      .status(500)
+      .json({ ok: false, error: 'No se pudo emitir', detail: String(e), body: req.body || null });
+  }
+});
+
+// ==== ENDPOINT DE DEMO PARA PROBAR EMISIÓN SIN PENSAR EN EL BODY ====
+app.post('/api/dev/issue-demo', (req, res) => {
+  const authError = requireIssueKey(req, res);
+  if (authError) return;
+
+  try {
+    const id = uuid();
+    const savedId = insertTicket({
+      id,
+      buyer_name: 'Demo',
+      buyer_email: 'demo@example.com',
+      buyer_phone: '0000000000',
+      function_id: 'funcion-demo',
+      function_label: 'Función Demo — Hoy 20:00',
+      event_title: 'Los Miserables (Demo)',
+      currency: 'MXN',
+      price: 1,
+      payment_id: null,
+    });
+    return res.json({ ok: true, id: savedId, url: `${BASE_URL}/t/${savedId}` });
+  } catch (e) {
+    console.error('issue-demo error:', e);
+    return res
+      .status(500)
+      .json({ ok: false, error: 'No se pudo emitir (demo)', detail: String(e) });
   }
 });
 
@@ -210,5 +244,5 @@ app.use((_req, res) => {
 // ==== LISTEN ====
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
-  console.log(`BASE_URL: ${BASE_URL}`);
+  console.log(`URL BASE: ${BASE_URL}`);
 });
