@@ -19,13 +19,14 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 10000;
 const ISSUE_KEY = process.env.ISSUE_KEY || '';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
-// Correo (SMTP). Si faltan datos, se desactiva envío sin romper el server.
+// Correo (SMTP)
 const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 0;
-const SMTP_USER = process.env.SMTP_USER || '';
-const SMTP_PASS = process.env.SMTP_PASS || '';
-const MAIL_FROM = process.env.MAIL_FROM || 'no-reply@boletera.local';
-const MAIL_BCC  = process.env.MAIL_BCC || ''; // opcional (copia oculta a producción)
+const SMTP_USER = process.env.SES_SMTP_USER || process.env.SMTP_USER || ''; // compatibles si cambias a SES
+const SMTP_PASS = process.env.SES_SMTP_PASS || process.env.SMTP_PASS || '';
+const MAIL_FROM = process.env.MAIL_FROM || 'Boletera <no-reply@boletera.local>';
+const MAIL_BCC  = process.env.MAIL_BCC || ''; // opcional
+const MAIL_ADMIN = process.env.MAIL_ADMIN || ''; // <-- NUEVO: correo del administrador (tú)
 
 const mailEnabled = SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS;
 let transporter = null;
@@ -33,7 +34,7 @@ if (mailEnabled) {
   transporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,
-    secure: SMTP_PORT === 465, // true para 465, false para 587/25
+    secure: SMTP_PORT === 465,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
   });
   console.log('[mail] transporte SMTP activo @', SMTP_HOST, `:${SMTP_PORT}`);
@@ -47,7 +48,7 @@ if (process.env.MP_ACCESS_TOKEN) {
   console.log('[mercadoPago] Sin MP_ACCESS_TOKEN; emisión directa habilitada únicamente');
 }
 
-// ==== ESTÁTICOS (si existe frontend) ====
+// ==== ESTÁTICOS (si hay frontend) ====
 const distDir = path.resolve(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir));
@@ -69,7 +70,7 @@ function requireIssueKey(req, res) {
 }
 const uuid = () => crypto.randomUUID();
 
-async function sendTicketEmail({ to, subject, text, html }) {
+async function sendMail({ to, subject, text, html, bcc }) {
   if (!mailEnabled || !transporter) {
     console.log('[mail] envío omitido (SMTP no configurado). Destinatario habría sido:', to);
     return { ok: false, skipped: true };
@@ -77,13 +78,13 @@ async function sendTicketEmail({ to, subject, text, html }) {
   const mailOptions = {
     from: MAIL_FROM,
     to,
-    bcc: MAIL_BCC ? MAIL_BCC : undefined,
+    bcc: bcc || (MAIL_BCC ? MAIL_BCC : undefined),
     subject,
     text,
     html,
   };
   const info = await transporter.sendMail(mailOptions);
-  console.log('[mail] enviado:', info.messageId);
+  console.log('[mail] enviado:', info.messageId, '->', to);
   return { ok: true, id: info.messageId };
 }
 
@@ -124,7 +125,7 @@ app.get('/api/dev/db-info', (_req, res) => {
   }
 });
 
-// ==== EMITIR TICKET (emisión directa) ====
+// ==== EMITIR TICKET ====
 app.post('/api/tickets/issue', async (req, res) => {
   const authError = requireIssueKey(req, res);
   if (authError) return;
@@ -166,7 +167,7 @@ app.post('/api/tickets/issue', async (req, res) => {
 
     const url = `${BASE_URL}/t/${savedId}`;
 
-    // Enviar correo (sin bloquear la respuesta si falla)
+    // 1) Correo al comprador
     (async () => {
       try {
         const subject = `🎟️ Tus boletos: ${event_title} — ${function_label}`;
@@ -193,15 +194,46 @@ app.post('/api/tickets/issue', async (req, res) => {
             <p style="font-size:12px;color:#666">Guarda este correo. Presenta el código/URL en la entrada.</p>
           </div>
         `;
+        await sendMail({ to: buyer_email, subject, text: plain, html });
+      } catch (e) {
+        console.error('[mail] error al enviar confirmación comprador:', e);
+      }
+    })();
 
-        await sendTicketEmail({
-          to: buyer_email,
+    // 2) Correo de **administración** (para ti) como entrante NO leído
+    (async () => {
+      if (!MAIL_ADMIN) return;
+      try {
+        const subject = `🧾 Nueva emisión: ${event_title} — ${function_label}`;
+        const lines = [
+          `Se emitió un boleto.`,
+          ``,
+          `ID: ${savedId}`,
+          `Evento: ${event_title}`,
+          `Función: ${function_label}`,
+          `Comprador: ${buyer_name} <${buyer_email}>`,
+          `Precio: ${price} ${currency}`,
+          ``,
+          `Ticket: ${url}`,
+        ];
+        await sendMail({
+          to: MAIL_ADMIN,
           subject,
-          text: plain,
-          html,
+          text: lines.join('\n'),
+          html: `
+            <div style="font-family:system-ui,Arial,sans-serif;max-width:640px;margin:0 auto">
+              <h3>🧾 Nueva emisión</h3>
+              <p><strong>ID:</strong> ${savedId}</p>
+              <p><strong>Evento:</strong> ${event_title}</p>
+              <p><strong>Función:</strong> ${function_label}</p>
+              <p><strong>Comprador:</strong> ${buyer_name} — ${buyer_email}</p>
+              <p><strong>Precio:</strong> ${price} ${currency}</p>
+              <p><a href="${url}" target="_blank" rel="noopener">Abrir ticket</a></p>
+            </div>
+          `,
         });
       } catch (e) {
-        console.error('[mail] error al enviar confirmación:', e);
+        console.error('[mail][admin] error al enviar aviso admin:', e);
       }
     })();
 
@@ -222,7 +254,7 @@ app.post('/api/tickets/issue', async (req, res) => {
   }
 });
 
-// ==== DEMO (datos fijos) ====
+// ==== DEMO ====
 app.post('/api/dev/issue-demo', (req, res) => {
   const authError = requireIssueKey(req, res);
   if (authError) return;
@@ -243,10 +275,9 @@ app.post('/api/dev/issue-demo', (req, res) => {
     });
     const url = `${BASE_URL}/t/${savedId}`;
 
-    // Envío de correo de demo (si hay SMTP)
     (async () => {
       try {
-        await sendTicketEmail({
+        await sendMail({
           to: 'demo@example.com',
           subject: `🎟️ Boleto demo — ${savedId}`,
           text: `Boleto demo: ${url}`,
@@ -283,7 +314,7 @@ app.post('/api/tickets/:id/use', (req, res) => {
   return res.json({ ok, id, used: !!t?.used });
 });
 
-// ==== VISTA DEL TICKET ====
+// ==== VISTA TICKET ====
 app.get('/t/:id', (req, res) => {
   const { id } = req.params;
   const t = getTicket(id);
