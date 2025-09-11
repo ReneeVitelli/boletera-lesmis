@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 import db, { insertTicket, getTicket, markUsed } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,10 +14,32 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// ==== LOGS DE ARRANQUE / ENTORNO ====
+// ==== ENTORNO ====
 const PORT = process.env.PORT ? Number(process.env.PORT) : 10000;
 const ISSUE_KEY = process.env.ISSUE_KEY || '';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+
+// Correo (SMTP). Si faltan datos, se desactiva envío sin romper el server.
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 0;
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const MAIL_FROM = process.env.MAIL_FROM || 'no-reply@boletera.local';
+const MAIL_BCC  = process.env.MAIL_BCC || ''; // opcional (copia oculta a producción)
+
+const mailEnabled = SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS;
+let transporter = null;
+if (mailEnabled) {
+  transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465, // true para 465, false para 587/25
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+  console.log('[mail] transporte SMTP activo @', SMTP_HOST, `:${SMTP_PORT}`);
+} else {
+  console.log('[mail] SMTP no configurado (se omiten envíos hasta definir variables).');
+}
 
 if (process.env.MP_ACCESS_TOKEN) {
   console.log('[mercadoPago] Usando SDK v2 (token presente)');
@@ -24,7 +47,7 @@ if (process.env.MP_ACCESS_TOKEN) {
   console.log('[mercadoPago] Sin MP_ACCESS_TOKEN; emisión directa habilitada únicamente');
 }
 
-// ==== SERVIR FRONTEND SI EXISTE ====
+// ==== ESTÁTICOS (si existe frontend) ====
 const distDir = path.resolve(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir));
@@ -33,7 +56,7 @@ if (fs.existsSync(distDir)) {
   console.log('[estático] sin frontend/dist; sólo API');
 }
 
-// ==== UTILES ====
+// ==== HELPERS ====
 function requireIssueKey(req, res) {
   const key = req.get('X-Issue-Key') || '';
   if (!ISSUE_KEY) {
@@ -44,17 +67,31 @@ function requireIssueKey(req, res) {
   }
   return null;
 }
+const uuid = () => crypto.randomUUID();
 
-function uuid() {
-  return crypto.randomUUID();
+async function sendTicketEmail({ to, subject, text, html }) {
+  if (!mailEnabled || !transporter) {
+    console.log('[mail] envío omitido (SMTP no configurado). Destinatario habría sido:', to);
+    return { ok: false, skipped: true };
+  }
+  const mailOptions = {
+    from: MAIL_FROM,
+    to,
+    bcc: MAIL_BCC ? MAIL_BCC : undefined,
+    subject,
+    text,
+    html,
+  };
+  const info = await transporter.sendMail(mailOptions);
+  console.log('[mail] enviado:', info.messageId);
+  return { ok: true, id: info.messageId };
 }
 
-// ==== RUTAS BASICAS ====
+// ==== RUTAS BÁSICAS ====
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, db: !!db, now: new Date().toISOString() });
+  res.json({ ok: true, db: !!db, mail: !!mailEnabled, now: new Date().toISOString() });
 });
 
-// Lista de rutas
 app.get('/__routes', (_req, res) => {
   const routes = [];
   app._router.stack.forEach((m) => {
@@ -74,15 +111,25 @@ app.get('/__routes', (_req, res) => {
   res.json(routes);
 });
 
+// Diagnóstico BD
+app.get('/api/dev/db-info', (_req, res) => {
+  try {
+    const table = db.prepare(`PRAGMA table_info(tickets);`).all();
+    const idx   = db.prepare(`PRAGMA index_list('tickets');`).all();
+    const trg   = db.prepare(`SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name='tickets';`).all();
+    const one   = db.prepare(`SELECT * FROM tickets ORDER BY created_at DESC LIMIT 1;`).get();
+    res.json({ ok: true, table, idx, trg, latest: one || null });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'PRAGMA failed', detail: String(e) });
+  }
+});
+
 // ==== EMITIR TICKET (emisión directa) ====
 app.post('/api/tickets/issue', async (req, res) => {
   const authError = requireIssueKey(req, res);
   if (authError) return;
 
   try {
-    // Log de diagnóstico
-    console.log('[issue] body recibido:', req.body);
-
     const {
       buyer_name,
       buyer_email,
@@ -98,8 +145,7 @@ app.post('/api/tickets/issue', async (req, res) => {
     if (!buyer_name || !buyer_email || !function_id || !function_label || !event_title) {
       return res.status(400).json({
         ok: false,
-        error:
-          'Faltan campos: buyer_name, buyer_email, function_id, function_label, event_title son obligatorios',
+        error: 'Faltan campos: buyer_name, buyer_email, function_id, function_label, event_title son obligatorios',
         received: req.body,
       });
     }
@@ -118,16 +164,65 @@ app.post('/api/tickets/issue', async (req, res) => {
       payment_id,
     });
 
-    return res.json({ ok: true, id: savedId, url: `${BASE_URL}/t/${savedId}` });
+    const url = `${BASE_URL}/t/${savedId}`;
+
+    // Enviar correo (sin bloquear la respuesta si falla)
+    (async () => {
+      try {
+        const subject = `🎟️ Tus boletos: ${event_title} — ${function_label}`;
+        const plain = [
+          `¡Gracias por tu compra, ${buyer_name}!`,
+          ``,
+          `Evento: ${event_title}`,
+          `Función: ${function_label}`,
+          `Precio: ${price} ${currency}`,
+          ``,
+          `Tu boleto: ${url}`,
+          ``,
+          `Presenta el código/URL en la entrada. Si tienes dudas, responde a este correo.`,
+        ].join('\n');
+
+        const html = `
+          <div style="font-family:system-ui,Arial,sans-serif;max-width:640px;margin:0 auto">
+            <h2>🎟️ ${event_title}</h2>
+            <p><strong>Función:</strong> ${function_label}</p>
+            <p><strong>Comprador:</strong> ${buyer_name} — ${buyer_email}</p>
+            <p><strong>Precio:</strong> ${price} ${currency}</p>
+            <p><a href="${url}" target="_blank" rel="noopener">Abrir mi boleto</a></p>
+            <hr/>
+            <p style="font-size:12px;color:#666">Guarda este correo. Presenta el código/URL en la entrada.</p>
+          </div>
+        `;
+
+        await sendTicketEmail({
+          to: buyer_email,
+          subject,
+          text: plain,
+          html,
+        });
+      } catch (e) {
+        console.error('[mail] error al enviar confirmación:', e);
+      }
+    })();
+
+    return res.json({ ok: true, id: savedId, url });
   } catch (e) {
     console.error('issue error:', e);
-    return res
-      .status(500)
-      .json({ ok: false, error: 'No se pudo emitir', detail: String(e), body: req.body || null });
+    let table = [], idx = [], trg = [];
+    try { table = db.prepare(`PRAGMA table_info(tickets);`).all(); } catch {}
+    try { idx   = db.prepare(`PRAGMA index_list('tickets');`).all(); } catch {}
+    try { trg   = db.prepare(`SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name='tickets';`).all(); } catch {}
+    return res.status(500).json({
+      ok: false,
+      error: 'No se pudo emitir',
+      detail: String(e),
+      schema: { table, idx, trg },
+      body: req.body || null,
+    });
   }
 });
 
-// ==== ENDPOINT DE DEMO PARA PROBAR EMISIÓN SIN PENSAR EN EL BODY ====
+// ==== DEMO (datos fijos) ====
 app.post('/api/dev/issue-demo', (req, res) => {
   const authError = requireIssueKey(req, res);
   if (authError) return;
@@ -146,12 +241,35 @@ app.post('/api/dev/issue-demo', (req, res) => {
       price: 1,
       payment_id: null,
     });
-    return res.json({ ok: true, id: savedId, url: `${BASE_URL}/t/${savedId}` });
+    const url = `${BASE_URL}/t/${savedId}`;
+
+    // Envío de correo de demo (si hay SMTP)
+    (async () => {
+      try {
+        await sendTicketEmail({
+          to: 'demo@example.com',
+          subject: `🎟️ Boleto demo — ${savedId}`,
+          text: `Boleto demo: ${url}`,
+          html: `<p>Boleto demo: <a href="${url}">${url}</a></p>`,
+        });
+      } catch (e) {
+        console.error('[mail][demo] error:', e);
+      }
+    })();
+
+    return res.json({ ok: true, id: savedId, url });
   } catch (e) {
     console.error('issue-demo error:', e);
-    return res
-      .status(500)
-      .json({ ok: false, error: 'No se pudo emitir (demo)', detail: String(e) });
+    let table = [], idx = [], trg = [];
+    try { table = db.prepare(`PRAGMA table_info(tickets);`).all(); } catch {}
+    try { idx   = db.prepare(`PRAGMA index_list('tickets');`).all(); } catch {}
+    try { trg   = db.prepare(`SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name='tickets';`).all(); } catch {}
+    return res.status(500).json({
+      ok: false,
+      error: 'No se pudo emitir (demo)',
+      detail: String(e),
+      schema: { table, idx, trg }
+    });
   }
 });
 
@@ -165,7 +283,7 @@ app.post('/api/tickets/:id/use', (req, res) => {
   return res.json({ ok, id, used: !!t?.used });
 });
 
-// ==== VISTA MUY SIMPLE DEL TICKET ====
+// ==== VISTA DEL TICKET ====
 app.get('/t/:id', (req, res) => {
   const { id } = req.params;
   const t = getTicket(id);
@@ -236,7 +354,7 @@ app.get('/t/:id', (req, res) => {
   res.send(html);
 });
 
-// ==== CATCH-ALL (404) ====
+// ==== 404 ====
 app.use((_req, res) => {
   res.status(404).json({ ok: false, error: 'Ruta no encontrada' });
 });
