@@ -22,11 +22,14 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 // Correo (SMTP)
 const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 0;
-const SMTP_USER = process.env.SES_SMTP_USER || process.env.SMTP_USER || ''; // compatibles si cambias a SES
+const SMTP_USER = process.env.SES_SMTP_USER || process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SES_SMTP_PASS || process.env.SMTP_PASS || '';
 const MAIL_FROM = process.env.MAIL_FROM || 'Boletera <no-reply@boletera.local>';
-const MAIL_BCC  = process.env.MAIL_BCC || ''; // opcional
-const MAIL_ADMIN = process.env.MAIL_ADMIN || ''; // <-- NUEVO: correo del administrador (tú)
+const MAIL_BCC  = process.env.MAIL_BCC || '';
+const MAIL_ADMIN = process.env.MAIL_ADMIN || '';
+
+// Branding (opcional)
+const LOGO_URL = process.env.LOGO_URL || ''; // si defines esta variable, se mostrará el logo en /t/:id
 
 const mailEnabled = SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASS;
 let transporter = null;
@@ -200,7 +203,7 @@ app.post('/api/tickets/issue', async (req, res) => {
       }
     })();
 
-    // 2) Correo de **administración** (para ti) como entrante NO leído
+    // 2) Correo de administración (para ti)
     (async () => {
       if (!MAIL_ADMIN) return;
       try {
@@ -314,7 +317,7 @@ app.post('/api/tickets/:id/use', (req, res) => {
   return res.json({ ok, id, used: !!t?.used });
 });
 
-// ==== VISTA TICKET ====
+// ==== VISTA TICKET (NUEVO DISEÑO) ====
 app.get('/t/:id', (req, res) => {
   const { id } = req.params;
   const t = getTicket(id);
@@ -322,62 +325,126 @@ app.get('/t/:id', (req, res) => {
     return res.status(404).send(`<html><body><h1>Ticket no encontrado</h1><p>ID: ${id}</p></body></html>`);
   }
 
-  const usedLabel = t.used ? 'Usado' : 'No usado';
-  const btnLabel = t.used ? 'Usado' : 'Marcar como usado';
+  const used = !!t.used;
+  const usedLabel = used ? 'Usado' : 'No usado';
+  const btnLabel = used ? 'Usado' : 'Marcar como usado';
 
   const html = `<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Ticket ${id}</title>
+  <title>${t.event_title} — Ticket</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111827"/>
   <style>
-    body { font-family: system-ui, Arial, sans-serif; margin: 2rem; }
-    .card { max-width: 640px; border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
-    .row { margin: 8px 0; }
-    .status { font-weight: bold; }
-    button { padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer; }
-    button.primary { background:#111; color:#fff; }
-    button[disabled] { opacity: .6; cursor: not-allowed; }
+    :root{
+      --bg:#0b0e14;
+      --panel:#111827; 
+      --muted:#6b7280; 
+      --text:#e5e7eb; 
+      --brand:#e11d48; /* rosa/rojo elegante */
+      --ok:#16a34a; 
+      --warn:#f59e0b; 
+      --border:rgba(255,255,255,.08);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(1200px 600px at 20% -10%, rgba(225,29,72,.18), transparent), var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;}
+    .wrap{min-height:100svh; display:flex; align-items:center; justify-content:center; padding:24px;}
+    .card{width:100%; max-width:720px; border:1px solid var(--border); background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); border-radius:20px; overflow:hidden; box-shadow: 0 10px 30px rgba(0,0,0,.35)}
+    .header{display:flex; align-items:center; gap:16px; padding:20px 24px; border-bottom:1px solid var(--border); background:linear-gradient(90deg, rgba(225,29,72,.08), transparent);}
+    .logo{height:40px; width:auto; display:${LOGO_URL ? 'block' : 'none'}}
+    .title{font-size:22px; font-weight:700; letter-spacing:.2px}
+    .body{padding:22px 24px; display:grid; gap:14px}
+    .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+    .label{color:var(--muted); min-width:92px}
+    .value{font-weight:600}
+    .badge{display:inline-flex; align-items:center; gap:8px; font-weight:700; padding:8px 12px; border-radius:999px; border:1px solid var(--border);}
+    .badge.ok{color:#d1fae5; background:rgba(22,163,74,.14); border-color:rgba(16,185,129,.25)}
+    .badge.warn{color:#fff7ed; background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.25)}
+    .footer{display:flex; gap:10px; padding:20px 24px; border-top:1px solid var(--border); background:rgba(255,255,255,.02)}
+    button{appearance:none; border:0; border-radius:12px; padding:12px 14px; font-weight:700; cursor:pointer}
+    .btn-primary{background:#111; color:#fff; border:1px solid var(--border)}
+    .btn-primary:hover{opacity:.9}
+    .btn-outline{background:transparent; color:var(--text); border:1px solid var(--border)}
+    .btn-outline:hover{background:rgba(255,255,255,.04)}
+    .muted{color:var(--muted)}
+    .id{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:var(--muted)}
+    @media (max-width: 520px){
+      .label{min-width:auto}
+      .header{padding:18px}
+      .body{padding:18px}
+      .footer{padding:18px}
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>${t.event_title}</h1>
-    <div class="row"><strong>Función:</strong> ${t.function_label}</div>
-    <div class="row"><strong>Comprador:</strong> ${t.buyer_name} — ${t.buyer_email}</div>
-    <div class="row"><strong>Precio:</strong> ${t.price} ${t.currency}</div>
-    <div class="row status">Estado: <span id="st">${usedLabel}</span></div>
-    <div class="row">
-      <button id="btn" class="primary" ${t.used ? 'disabled' : ''}>${btnLabel}</button>
+  <div class="wrap">
+    <div class="card">
+      <div class="header">
+        <img class="logo" src="${LOGO_URL}" alt="logo"/>
+        <div>
+          <div class="title">${t.event_title}</div>
+          <div class="muted">Boleto digital</div>
+        </div>
+        <div style="margin-left:auto">
+          <span class="badge ${used ? 'ok' : 'warn'}">${used ? '✓ Usado' : '• No usado'}</span>
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="row"><span class="label">Función</span> <span class="value">${t.function_label}</span></div>
+        <div class="row"><span class="label">Comprador</span> <span class="value">${t.buyer_name} — ${t.buyer_email}</span></div>
+        <div class="row"><span class="label">Precio</span> <span class="value">${t.price} ${t.currency}</span></div>
+        <div class="row"><span class="label">Estado</span> <span id="st" class="value">${usedLabel}</span></div>
+        <div class="row"><span class="label">ID</span> <span class="id">${id}</span></div>
+      </div>
+
+      <div class="footer">
+        <button id="btn" class="btn-primary" ${used ? 'disabled' : ''}>${btnLabel}</button>
+        <button id="copy" class="btn-outline">Copiar enlace</button>
+        <button id="print" class="btn-outline">Imprimir</button>
+        <div style="margin-left:auto" class="muted">Presenta este boleto en la entrada</div>
+      </div>
     </div>
-    <div class="row"><small>ID: ${id}</small></div>
   </div>
 
   <script>
-  const btn = document.getElementById('btn');
-  const st = document.getElementById('st');
+    const id = ${JSON.stringify(id)};
+    const st = document.getElementById('st');
+    const btn = document.getElementById('btn');
+    const copy = document.getElementById('copy');
+    const printBtn = document.getElementById('print');
 
-  if (btn) {
-    btn.addEventListener('click', async () => {
-      if (btn.disabled) return;
-      btn.disabled = true;
-      try {
-        const r = await fetch('/api/tickets/${id}/use', { method: 'POST' });
-        const j = await r.json();
-        if (j.ok && j.used) {
-          st.textContent = 'Usado';
-          btn.textContent = 'Usado';
-        } else {
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/tickets/' + id + '/use', { method: 'POST' });
+          const j = await r.json();
+          if (j.ok && j.used) {
+            st.textContent = 'Usado';
+            btn.textContent = 'Usado';
+          } else {
+            btn.disabled = false;
+            alert('No se pudo marcar como usado');
+          }
+        } catch (e) {
           btn.disabled = false;
-          alert('No se pudo marcar como usado');
+          alert('Error: ' + e);
         }
-      } catch (e) {
-        btn.disabled = false;
-        alert('Error: ' + e);
-      }
+      });
+    }
+
+    copy?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(location.href);
+        copy.textContent = '¡Copiado!';
+        setTimeout(() => (copy.textContent = 'Copiar enlace'), 2000);
+      } catch (e) { alert('No se pudo copiar'); }
     });
-  }
+
+    printBtn?.addEventListener('click', () => window.print());
   </script>
 </body>
 </html>`;
