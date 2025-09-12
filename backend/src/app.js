@@ -13,8 +13,8 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ISSUE_KEY = process.env.ISSUE_KEY || "";
 
 // Logos y marca de agua (claro/oscuro)
-const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || ""; // versión BLANCA (modo oscuro)
-const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || ""; // versión NEGRA  (modo claro)
+const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || ""; // BLANCO (modo oscuro)
+const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || ""; // NEGRO  (modo claro)
 const WATERMARK_URL_LIGHT = process.env.WATERMARK_URL_LIGHT || "";
 const WATERMARK_URL_DARK  = process.env.WATERMARK_URL_DARK  || "";
 
@@ -39,12 +39,11 @@ const routesList = () => ([
 
 // ===== Vista del ticket =====
 function renderTicketHTML(t, qrDataUrl) {
-  // Campos esperados tal como los tenías
-  const title    = t.event_title    || "Los Miserables";
-  const funcion  = t.function_label || "";
-  const comprador= `${t.buyer_name || ""} — ${t.buyer_email || ""}`;
-  const estado   = t.used ? "Usado" : "No usado";
-  const price    = moneyMXN(t.price);
+  const title     = t.event_title    || "Los Miserables";
+  const funcion   = t.function_label || "";
+  const comprador = `${t.buyer_name || ""} — ${t.buyer_email || ""}`;
+  const estado    = t.used ? "Usado" : "No usado";
+  const price     = moneyMXN(t.price);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -53,11 +52,14 @@ function renderTicketHTML(t, qrDataUrl) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${title}</title>
 <style>
-  /* ===== Paleta: degradado vino ===== */
+  /* ===== Paleta con degradado vino -> negro (como la captura) ===== */
   :root{
-    --vino-top:#1d0e16;   /* banda superior más oscura */
-    --vino-main-a:#2a0f1e;
-    --vino-main-b:#3a1528;
+    /* vinos */
+    --vino-header:#3b0f20;   /* banda superior (vino más notorio) */
+    --vino-a:#341120;        /* inicio del cuerpo */
+    --vino-b:#1b1219;        /* parte media oscura */
+    --negro:#0b0c10;         /* base negra */
+    /* textos */
     --fg:#eaeaea;
     --muted:#a9a9a9;
     --ok:#2e7d32;
@@ -67,9 +69,11 @@ function renderTicketHTML(t, qrDataUrl) {
     :root{
       --fg:#111;
       --muted:#545454;
-      --vino-top:#f3e9ee;
-      --vino-main-a:#f2e7ec;
-      --vino-main-b:#ead6dd;
+      /* en claro suavizamos el vino pero mantenemos el tono */
+      --vino-header:#f0e6ea;
+      --vino-a:#efe2e8;
+      --vino-b:#ead6dd;
+      --negro:#ffffff;
     }
     body{ background:#f5f5f7; }
   }
@@ -83,15 +87,26 @@ function renderTicketHTML(t, qrDataUrl) {
     display:flex; justify-content:center;
   }
 
-  /* Tarjeta horizontal con header vino más oscuro y cuerpo vino */
+  /* Tarjeta horizontal con:
+     - Banda superior vino (96px)
+     - Degradado vino -> negro en el cuerpo
+     - Viñeteado suave para el look */
   .card{
     position:relative;
     width:min(1100px, 96vw);
     border-radius:18px;
     overflow:hidden;
     box-shadow:0 22px 60px rgba(0,0,0,.35);
-    background: linear-gradient(180deg,var(--vino-top) 0 96px, transparent 96px),
-                linear-gradient(135deg,var(--vino-main-a),var(--vino-main-b));
+    background:
+      linear-gradient(180deg, var(--vino-header) 0 96px, transparent 96px),
+      linear-gradient(180deg, var(--vino-a) 0%, var(--vino-b) 38%, var(--negro) 100%);
+  }
+  /* viñeteado sutil en los bordes (como la referencia) */
+  .card::before{
+    content:'';
+    position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(120% 140% at 50% -10%, transparent 45%, rgba(0,0,0,.25) 75%, rgba(0,0,0,.45) 100%);
+    mix-blend-mode: normal;
   }
 
   /* Marca de agua: CENTRADA, sin blur, completa, opacidad sutil */
@@ -99,9 +114,9 @@ function renderTicketHTML(t, qrDataUrl) {
     content:'';
     position:absolute; inset:0; pointer-events:none;
     background-repeat:no-repeat;
-    background-position: center center;   /* <— CAMBIO 1: CENTRADA */
-    background-size: contain;             /* se ve COMPLETA */
-    opacity:.14;                          /* sutil */
+    background-position:center center;   /* centrada */
+    background-size:contain;             /* completa */
+    opacity:.14;                         /* atenuada */
     ${WATERMARK_URL_LIGHT || WATERMARK_URL_DARK ? "" : "display:none;"}
   }
   @media (prefers-color-scheme: dark){
@@ -127,7 +142,7 @@ function renderTicketHTML(t, qrDataUrl) {
     padding:22px 28px 12px;
   }
   .branding{ display:flex; align-items:center; gap:14px; }
-  /* Logo blanco sobre fondo oscuro (default), negro en claro */
+  /* Logo blanco en oscuro, negro en claro */
   .logo{ height:70px; width:auto; display:block; }
   @media (min-width: 900px){ .logo{ height:86px; } }
   .title{ font-size:2rem; font-weight:800; letter-spacing:.2px; margin-bottom:2px; }
@@ -137,6 +152,7 @@ function renderTicketHTML(t, qrDataUrl) {
     padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem;
     color:#fff; display:inline-flex; align-items:center; gap:8px;
     background: var(--ok);
+    box-shadow: 0 4px 10px rgba(0,0,0,.25);
   }
   .pill.warn{ background:var(--warn); }
 
@@ -166,7 +182,7 @@ function renderTicketHTML(t, qrDataUrl) {
     .qr img{ width:220px; height:220px; }
   }
 
-  /* Usa la versión de logo correcta según esquema */
+  /* Alterna logo según esquema */
   @media (prefers-color-scheme: dark){
     .logo { content: url('${LOGO_URL_LIGHT}'); } /* BLANCO */
   }
@@ -220,13 +236,13 @@ app.get("/health", (req, res) => {
 });
 app.get("/__routes", (req, res) => res.json(routesList()));
 
-// Emisión (mantiene tu contrato de campos)
+// Emisión normal
 app.post("/api/tickets/issue", (req, res) => {
   try {
     if (!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY) {
       return res.status(401).json({ ok:false, error:"ISSUE_KEY inválida" });
     }
-    const id = insertTicket({ ...req.body }); // tu insert conserva campos
+    const id = insertTicket({ ...req.body });
     res.json({ ok:true, id, url:`${BASE_URL}/t/${id}` });
   } catch (e) {
     console.error("issue error:", e);
@@ -234,7 +250,7 @@ app.post("/api/tickets/issue", (req, res) => {
   }
 });
 
-// Demo opcional
+// Emisión demo
 app.post("/api/dev/issue-demo", (req, res) => {
   try {
     if (!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY) {
