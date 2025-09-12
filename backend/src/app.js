@@ -12,11 +12,11 @@ const PORT = process.env.PORT || 10000;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ISSUE_KEY = process.env.ISSUE_KEY || "";
 
-// Logos (usa el claro en fondo oscuro y viceversa)
+// Logos
 const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || "";
 const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || "";
 
-// Marca de agua (Cosette)
+// Marca de agua
 const WATERMARK_URL_LIGHT = process.env.WATERMARK_URL_LIGHT || "";
 const WATERMARK_URL_DARK  = process.env.WATERMARK_URL_DARK  || "";
 
@@ -47,7 +47,6 @@ function renderTicketHTML(t, qrDataUrl) {
   const estado    = t.used ? "Usado" : "No usado";
   const price     = moneyMXN(t.price);
 
-  // Logo: el código ya elige el adecuado vía CSS prefers-color-scheme
   const logoDark  = LOGO_URL_DARK  || "";
   const logoLight = LOGO_URL_LIGHT || "";
 
@@ -90,14 +89,9 @@ function renderTicketHTML(t, qrDataUrl) {
       linear-gradient(180deg, var(--vino-header) 0 96px, transparent 96px),
       linear-gradient(180deg, var(--vino-a) 0%, var(--vino-b) 38%, var(--negro) 100%);
   }
-  .card::before{
-    content:''; position:absolute; inset:0; pointer-events:none;
-    background: radial-gradient(120% 140% at 50% -10%, transparent 45%, rgba(0,0,0,.25) 75%, rgba(0,0,0,.45) 100%);
-  }
   .card::after{
     content:''; position:absolute; inset:0; pointer-events:none;
     background-repeat:no-repeat; background-position:center; background-size:contain; opacity:.14;
-    ${WATERMARK_URL_LIGHT || WATERMARK_URL_DARK ? "" : "display:none;"}
   }
   @media (prefers-color-scheme: dark){ .card::after{ background-image:url('${WATERMARK_URL_DARK}'); } }
   @media (prefers-color-scheme: light){ .card::after{ background-image:url('${WATERMARK_URL_LIGHT}'); } }
@@ -106,25 +100,27 @@ function renderTicketHTML(t, qrDataUrl) {
   .branding{ display:flex; align-items:center; gap:14px; }
   .logo img{ height:70px; width:auto; display:block; }
   @media (min-width:900px){ .logo img{ height:86px; } }
-  /* Logo claro en dark, logo oscuro en light */
   @media (prefers-color-scheme: dark){ .logo img{ content: url('${logoLight}'); } }
   @media (prefers-color-scheme: light){ .logo img{ content: url('${logoDark}'); } }
 
-  .title{ font-size:2rem; font-weight:800; letter-spacing:.2px; margin-bottom:2px; }
+  .title{ font-size:2rem; font-weight:800; margin-bottom:2px; }
   .subtitle{ font-size:.95rem; color:var(--muted); }
 
-  /* Sello de estado para ESCRITORIO (arriba a la derecha) */
-  .pill{ padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem; color:var(--pill-fg);
-         display:inline-flex; gap:8px; background:var(--ok); box-shadow:0 4px 10px rgba(0,0,0,.25); }
+  .pill{
+    padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem; color:var(--pill-fg);
+    display:inline-flex; gap:8px; box-shadow:0 4px 10px rgba(0,0,0,.25);
+  }
+  .pill.ok{ background:var(--ok); }
   .pill.warn{ background:var(--warn); }
+
   .pill--desktop{ display:inline-flex; }
-  .pill--mobile { display:none; } /* la versión móvil se activa abajo */
+  .pill--mobile { display:none; }
 
   .inner{ position:relative; z-index:1; display:grid; grid-template-columns:1fr 360px; gap:28px; padding:24px 28px 22px; }
   .label{ font-weight:700; margin-right:6px; }
   .muted{ color:var(--muted); }
 
-  .qrBox{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .qrBox{ display:flex; flex-direction:column; align-items:center; gap:16px; }
   .qrBox img{ width:280px; height:280px; background:#fff; padding:10px; border-radius:12px; box-shadow:0 8px 18px rgba(0,0,0,.28); }
 
   .fields{ display:flex; flex-direction:column; gap:14px; }
@@ -136,22 +132,18 @@ function renderTicketHTML(t, qrDataUrl) {
   @media (max-width:820px){
     .inner{ grid-template-columns:1fr; }
     .qrBox img{ width:240px; height:240px; }
-    /* ocultar sello grande */
     .pill--desktop{ display:none; }
-    /* mostrar sello discreto bajo el QR */
     .pill--mobile{
       display:inline-flex;
-      padding:6px 10px;
-      font-size:.9rem;
-      font-weight:600;
-      color:var(--muted);
-      background:transparent;
-      border:1px solid color-mix(in oklab, var(--muted) 55%, transparent);
-      box-shadow:none;
-      border-radius:10px;
+      padding:8px 16px;
+      font-size:1rem;
+      font-weight:700;
+      border-radius:999px;
+      color:#fff;
+      background:var(--ok);
+      box-shadow:0 4px 10px rgba(0,0,0,.25);
     }
-    .pill--mobile.ok   { /* leve tinte verdoso en dark / tenue en light */ }
-    .pill--mobile.warn { /* leve tinte naranja si llegáramos a mostrar “No usado” */ }
+    .pill--mobile.warn{ background:var(--warn); }
   }
 </style>
 </head>
@@ -179,7 +171,6 @@ function renderTicketHTML(t, qrDataUrl) {
 
       <aside class="qrBox">
         <img src="${qrDataUrl}" alt="QR" />
-        <!-- Versión móvil del estado, discreta debajo del QR -->
         <div class="pill pill--mobile ${t.used ? "ok" : "warn"}">${t.used ? "✓ Usado" : "• No usado"}</div>
       </aside>
     </section>
@@ -197,7 +188,6 @@ function renderTicketHTML(t, qrDataUrl) {
 app.get("/health", (req, res) => res.json({ ok:true, db:!!db, now:new Date().toISOString() }) );
 app.get("/__routes", (req, res) => res.json(routesList()) );
 
-// Emisión normal
 app.post("/api/tickets/issue", (req, res) => {
   try{
     if(!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY){
@@ -205,13 +195,9 @@ app.post("/api/tickets/issue", (req, res) => {
     }
     const id = insertTicket({ ...req.body });
     res.json({ ok:true, id, url:`${BASE_URL}/t/${id}` });
-  }catch(e){
-    console.error("issue error:", e);
-    res.status(500).json({ ok:false, error:String(e.message||e) });
-  }
+  }catch(e){ res.status(500).json({ ok:false, error:String(e.message||e) }); }
 });
 
-// Emisión demo
 app.post("/api/dev/issue-demo", (req, res) => {
   try{
     if(!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY){
@@ -227,24 +213,16 @@ app.post("/api/dev/issue-demo", (req, res) => {
       price:350, currency:"MXN",
     });
     res.json({ ok:true, id, url:`${BASE_URL}/t/${id}` });
-  }catch(e){
-    console.error("dev demo error:", e);
-    res.status(500).json({ ok:false, error:String(e.message||e) });
-  }
+  }catch(e){ res.status(500).json({ ok:false, error:String(e.message||e) }); }
 });
 
-// Marcar como usado
 app.post("/api/tickets/:id/use", (req, res) => {
   try{
     const changed = markUsed(req.params.id);
     res.json({ ok:true, id:req.params.id, used:true, changed });
-  }catch(e){
-    console.error("markUsed error:", e);
-    res.status(500).json({ ok:false, error:String(e.message||e) });
-  }
+  }catch(e){ res.status(500).json({ ok:false, error:String(e.message||e) }); }
 });
 
-// Ver ticket
 app.get("/t/:id", async (req, res) => {
   try{
     const t = getTicket(req.params.id);
@@ -252,13 +230,9 @@ app.get("/t/:id", async (req, res) => {
     const qrUrl = `${BASE_URL}/t/${t.id}`;
     const qrDataUrl = await QRCode.toDataURL(qrUrl);
     res.send(renderTicketHTML(t, qrDataUrl));
-  }catch(e){
-    console.error("render ticket error:", e);
-    res.status(500).send("Error interno");
-  }
+  }catch(e){ res.status(500).send("Error interno"); }
 });
 
-// ===== Arranque =====
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
   console.log(`URL BASE: ${BASE_URL}`);
