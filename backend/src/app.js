@@ -12,10 +12,11 @@ const PORT = process.env.PORT || 10000;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ISSUE_KEY = process.env.ISSUE_KEY || "";
 
-// Logos y marca de agua
-// Usaremos SIEMPRE el logo NEGRO y lo convertiremos a BLANCO con CSS
+// Logos (usa el claro en fondo oscuro y viceversa)
 const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || "";
 const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || "";
+
+// Marca de agua (Cosette)
 const WATERMARK_URL_LIGHT = process.env.WATERMARK_URL_LIGHT || "";
 const WATERMARK_URL_DARK  = process.env.WATERMARK_URL_DARK  || "";
 
@@ -46,7 +47,9 @@ function renderTicketHTML(t, qrDataUrl) {
   const estado    = t.used ? "Usado" : "No usado";
   const price     = moneyMXN(t.price);
 
-  const logoSrcAlways = LOGO_URL_DARK || LOGO_URL_LIGHT || "";
+  // Logo: el código ya elige el adecuado vía CSS prefers-color-scheme
+  const logoDark  = LOGO_URL_DARK  || "";
+  const logoLight = LOGO_URL_LIGHT || "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -65,11 +68,13 @@ function renderTicketHTML(t, qrDataUrl) {
     --muted:#a9a9a9;
     --ok:#2e7d32;
     --warn:#f57c00;
+    --pill-fg:#fff;
   }
   @media (prefers-color-scheme: light){
     :root{
       --fg:#111; --muted:#545454;
       --vino-header:#f0e6ea; --vino-a:#efe2e8; --vino-b:#ead6dd; --negro:#ffffff;
+      --pill-fg:#222;
     }
     body{ background:#f5f5f7; }
   }
@@ -99,33 +104,54 @@ function renderTicketHTML(t, qrDataUrl) {
 
   .head{ position:relative; z-index:1; display:flex; align-items:flex-end; justify-content:space-between; padding:22px 28px 12px; }
   .branding{ display:flex; align-items:center; gap:14px; }
-
-  /* FORZAR LOGO BLANCO SIEMPRE */
-  .logo img{ height:70px; width:auto; display:block; filter: invert(1) brightness(1.4) contrast(1.05); }
+  .logo img{ height:70px; width:auto; display:block; }
   @media (min-width:900px){ .logo img{ height:86px; } }
+  /* Logo claro en dark, logo oscuro en light */
+  @media (prefers-color-scheme: dark){ .logo img{ content: url('${logoLight}'); } }
+  @media (prefers-color-scheme: light){ .logo img{ content: url('${logoDark}'); } }
 
   .title{ font-size:2rem; font-weight:800; letter-spacing:.2px; margin-bottom:2px; }
   .subtitle{ font-size:.95rem; color:var(--muted); }
 
-  .pill{ padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem; color:#fff; display:inline-flex; gap:8px; background:var(--ok); box-shadow:0 4px 10px rgba(0,0,0,.25); }
+  /* Sello de estado para ESCRITORIO (arriba a la derecha) */
+  .pill{ padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem; color:var(--pill-fg);
+         display:inline-flex; gap:8px; background:var(--ok); box-shadow:0 4px 10px rgba(0,0,0,.25); }
   .pill.warn{ background:var(--warn); }
+  .pill--desktop{ display:inline-flex; }
+  .pill--mobile { display:none; } /* la versión móvil se activa abajo */
 
   .inner{ position:relative; z-index:1; display:grid; grid-template-columns:1fr 360px; gap:28px; padding:24px 28px 22px; }
   .label{ font-weight:700; margin-right:6px; }
   .muted{ color:var(--muted); }
 
-  .qr{ display:flex; align-items:center; justify-content:center; }
-  .qr img{ width:280px; height:280px; background:#fff; padding:10px; border-radius:12px; box-shadow:0 8px 18px rgba(0,0,0,.28); }
+  .qrBox{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .qrBox img{ width:280px; height:280px; background:#fff; padding:10px; border-radius:12px; box-shadow:0 8px 18px rgba(0,0,0,.28); }
 
   .fields{ display:flex; flex-direction:column; gap:14px; }
   .id-line{ color:var(--muted); margin-top:10px; }
 
   .foot{ display:flex; align-items:center; justify-content:space-between; padding:14px 28px 22px; color:var(--muted); font-size:.95rem; }
 
+  /* --------- MÓVIL --------- */
   @media (max-width:820px){
     .inner{ grid-template-columns:1fr; }
-    .qr{ justify-content:flex-start; }
-    .qr img{ width:220px; height:220px; }
+    .qrBox img{ width:240px; height:240px; }
+    /* ocultar sello grande */
+    .pill--desktop{ display:none; }
+    /* mostrar sello discreto bajo el QR */
+    .pill--mobile{
+      display:inline-flex;
+      padding:6px 10px;
+      font-size:.9rem;
+      font-weight:600;
+      color:var(--muted);
+      background:transparent;
+      border:1px solid color-mix(in oklab, var(--muted) 55%, transparent);
+      box-shadow:none;
+      border-radius:10px;
+    }
+    .pill--mobile.ok   { /* leve tinte verdoso en dark / tenue en light */ }
+    .pill--mobile.warn { /* leve tinte naranja si llegáramos a mostrar “No usado” */ }
   }
 </style>
 </head>
@@ -133,13 +159,13 @@ function renderTicketHTML(t, qrDataUrl) {
   <article class="card">
     <header class="head">
       <div class="branding">
-        <div class="logo"><img src="${logoSrcAlways}" alt="logo"></div>
+        <div class="logo"><img alt="logo"></div>
         <div>
           <div class="title">${title}</div>
           <div class="subtitle">Boleto digital</div>
         </div>
       </div>
-      <div class="pill ${t.used ? "" : "warn"}">${t.used ? "✓ Usado" : "• No usado"}</div>
+      <div class="pill pill--desktop ${t.used ? "ok" : "warn"}">${t.used ? "✓ Usado" : "• No usado"}</div>
     </header>
 
     <section class="inner">
@@ -150,7 +176,12 @@ function renderTicketHTML(t, qrDataUrl) {
         <div><span class="label">Estado:</span> ${estado}</div>
         <div class="id-line"><span class="label">ID:</span> ${t.id}</div>
       </div>
-      <aside class="qr"><img src="${qrDataUrl}" alt="QR" /></aside>
+
+      <aside class="qrBox">
+        <img src="${qrDataUrl}" alt="QR" />
+        <!-- Versión móvil del estado, discreta debajo del QR -->
+        <div class="pill pill--mobile ${t.used ? "ok" : "warn"}">${t.used ? "✓ Usado" : "• No usado"}</div>
+      </aside>
     </section>
 
     <footer class="foot">
