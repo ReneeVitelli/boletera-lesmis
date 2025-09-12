@@ -1,50 +1,50 @@
 // backend/src/app.js
 import express from "express";
 import QRCode from "qrcode";
+import crypto from "crypto";
 import db, { insertTicket, getTicket, markUsed } from "./db.js";
 
 const app = express();
 app.use(express.json());
 
-// ====== Entorno ======
+// ===== Entorno =====
 const PORT = process.env.PORT || 10000;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ISSUE_KEY = process.env.ISSUE_KEY || "";
 
 // Logos y marca de agua (claro/oscuro)
-const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || "";
-const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || "";
+const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || ""; // versión BLANCA (modo oscuro)
+const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || ""; // versión NEGRA  (modo claro)
 const WATERMARK_URL_LIGHT = process.env.WATERMARK_URL_LIGHT || "";
 const WATERMARK_URL_DARK  = process.env.WATERMARK_URL_DARK  || "";
 
 console.log("URL BASE:", BASE_URL);
 
-// ====== Utilidades ======
-function moneyMXN(n) {
-  const v = Number(n) || 0;
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0 }).format(v);
-}
+// ===== Utilidades =====
+const moneyMXN = (n) =>
+  new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    minimumFractionDigits: 0,
+  }).format(Number(n) || 0);
 
-function routesList() {
-  return [
-    { methods: "GET",  path: "/health" },
-    { methods: "GET",  path: "/__routes" },
-    { methods: "POST", path: "/api/tickets/issue" },
-    { methods: "POST", path: "/api/dev/issue-demo" },
-    { methods: "POST", path: "/api/tickets/:id/use" },
-    { methods: "GET",  path: "/t/:id" },
-  ];
-}
+const routesList = () => ([
+  { methods: "GET",  path: "/health" },
+  { methods: "GET",  path: "/__routes" },
+  { methods: "POST", path: "/api/tickets/issue" },
+  { methods: "POST", path: "/api/dev/issue-demo" },
+  { methods: "POST", path: "/api/tickets/:id/use" },
+  { methods: "GET",  path: "/t/:id" },
+]);
 
-// ====== Vistas ======
+// ===== Vista del ticket =====
 function renderTicketHTML(t, qrDataUrl) {
-  // Campos esperados del ticket (como los tenías):
-  // id, event_title, function_label, buyer_name, buyer_email, price, used
-  const title = t.event_title || "Los Miserables";
-  const funcion = t.function_label || "";
-  const comprador = `${t.buyer_name || ""} — ${t.buyer_email || ""}`;
-  const estado = t.used ? "Usado" : "No usado";
-  const price = moneyMXN(t.price);
+  // Campos esperados tal como los tenías
+  const title    = t.event_title    || "Los Miserables";
+  const funcion  = t.function_label || "";
+  const comprador= `${t.buyer_name || ""} — ${t.buyer_email || ""}`;
+  const estado   = t.used ? "Usado" : "No usado";
+  const price    = moneyMXN(t.price);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -53,54 +53,55 @@ function renderTicketHTML(t, qrDataUrl) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${title}</title>
 <style>
+  /* ===== Paleta: vuelve el degradado vino de tu 2ª captura ===== */
   :root{
-    --vino-a:#2d0f1f;  /* vino oscuro */
-    --vino-b:#4a1e30;  /* vino claro */
-    --card-bg:linear-gradient(135deg,var(--vino-a),var(--vino-b));
-    --fg:#eee;
-    --muted:#b9b9b9;
+    --vino-top:#1d0e16;   /* banda superior más oscura */
+    --vino-main-a:#2a0f1e;
+    --vino-main-b:#3a1528;
+    --fg:#eaeaea;
+    --muted:#a9a9a9;
     --ok:#2e7d32;
     --warn:#f57c00;
   }
   @media (prefers-color-scheme: light){
     :root{
       --fg:#111;
-      --muted:#555;
-      --vino-a:#f2e7ea;
-      --vino-b:#ead6dc;
-      --card-bg:linear-gradient(135deg,#ffffff,#f7eef2);
+      --muted:#545454;
+      --vino-top:#f3e9ee;
+      --vino-main-a:#f2e7ec;
+      --vino-main-b:#ead6dd;
     }
     body{ background:#f5f5f7; }
   }
+
+  /* Lienzo */
   body{
-    margin:0;
-    padding:24px;
+    margin:0; padding:28px;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, sans-serif;
     color:var(--fg);
-    background:#0c0c0f;
+    background:#0c0c10;
     display:flex; justify-content:center;
   }
+
+  /* Tarjeta horizontal con header vino más oscuro y cuerpo vino */
   .card{
     position:relative;
-    display:grid;
-    grid-template-columns: 1fr 220px;
-    gap:24px;
-    width:min(980px, 96vw);
-    border-radius:16px;
-    padding:24px 24px 20px;
-    background:var(--card-bg);
-    box-shadow:0 18px 48px rgba(0,0,0,.35);
+    width:min(1100px, 96vw);
+    border-radius:18px;
     overflow:hidden;
+    box-shadow:0 22px 60px rgba(0,0,0,.35);
+    background: linear-gradient(180deg,var(--vino-top) 0 96px, transparent 96px),
+                linear-gradient(135deg,var(--vino-main-a),var(--vino-main-b));
   }
-  /* Marca de agua centrada y suavizada */
+
+  /* Marca de agua: sin blur, completa, a la derecha, opaca sutil */
   .card::after{
     content:'';
     position:absolute; inset:0; pointer-events:none;
     background-repeat:no-repeat;
-    background-position:center center;
-    background-size:520px auto;
-    opacity:.08;
-    filter: blur(2px);
+    background-position: right 40px center; /* a la derecha, un poco separada del borde */
+    background-size: contain;               /* se ve COMPLETA */
+    opacity:.14;                            /* sutil sin volverse borrosa */
     ${WATERMARK_URL_LIGHT || WATERMARK_URL_DARK ? "" : "display:none;"}
   }
   @media (prefers-color-scheme: dark){
@@ -110,56 +111,67 @@ function renderTicketHTML(t, qrDataUrl) {
     .card::after{ background-image:url('${WATERMARK_URL_LIGHT}'); }
   }
 
+  /* Layout interno */
+  .inner{
+    position:relative; z-index:1;
+    display:grid;
+    grid-template-columns: 1fr 360px; /* texto | QR */
+    gap:28px;
+    padding:24px 28px 22px;
+  }
+
+  /* Encabezado en la banda superior */
   .head{
     position:relative; z-index:1;
-    grid-column:1 / -1;
-    display:flex; align-items:center; justify-content:space-between;
-    margin-bottom:4px;
+    display:flex; align-items:flex-end; justify-content:space-between;
+    padding:22px 28px 12px;
   }
   .branding{ display:flex; align-items:center; gap:14px; }
-  .logo{
-    height:64px; width:auto; display:block;
-  }
-  @media (min-width: 900px){ .logo{ height:84px; } }
-  .title{ font-size:1.9rem; font-weight:800; letter-spacing:.2px; }
-  .subtitle{ font-size:.95rem; color:var(--muted); margin-top:2px; }
+  /* Logo blanco sobre fondo oscuro (default), negro en claro */
+  .logo{ height:70px; width:auto; display:block; }
+  @media (min-width: 900px){ .logo{ height:86px; } }
+  .title{ font-size:2rem; font-weight:800; letter-spacing:.2px; margin-bottom:2px; }
+  .subtitle{ font-size:.95rem; color:var(--muted); }
 
   .pill{
-    position:relative; z-index:1;
     padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem;
     color:#fff; display:inline-flex; align-items:center; gap:8px;
+    background: var(--ok);
   }
-  .pill.ok{ background:var(--ok); }
   .pill.warn{ background:var(--warn); }
 
-  .info{
-    position:relative; z-index:1;
-    display:flex; flex-direction:column; gap:12px;
-  }
-  .row .label{ font-weight:700; margin-right:6px; }
+  .label{ font-weight:700; margin-right:6px; }
   .muted{ color:var(--muted); }
 
-  .qr{
-    position:relative; z-index:1;
-    display:flex; align-items:center; justify-content:center;
-  }
+  /* QR a la derecha con borde blanco y sombra */
+  .qr{ display:flex; align-items:center; justify-content:center; }
   .qr img{
-    width:200px; height:200px; background:#fff; padding:8px; border-radius:10px;
-    box-shadow:0 6px 14px rgba(0,0,0,.30);
+    width:280px; height:280px;
+    background:#fff; padding:10px; border-radius:12px;
+    box-shadow:0 8px 18px rgba(0,0,0,.28);
   }
 
+  .fields{ display:flex; flex-direction:column; gap:14px; }
+  .id-line{ color:var(--muted); margin-top:10px; }
+
   .foot{
-    position:relative; z-index:1;
-    grid-column:1 / -1;
     display:flex; align-items:center; justify-content:space-between;
-    margin-top:16px; color:var(--muted); font-size:.9rem;
+    padding:14px 28px 22px; color:var(--muted); font-size:.95rem;
   }
 
   /* Responsive: apilar en móviles */
-  @media (max-width: 720px){
-    .card{ grid-template-columns: 1fr; }
+  @media (max-width: 820px){
+    .inner{ grid-template-columns: 1fr; }
     .qr{ justify-content:flex-start; }
-    .qr img{ width:180px; height:180px; }
+    .qr img{ width:220px; height:220px; }
+  }
+
+  /* Usa la versión de logo correcta según esquema */
+  @media (prefers-color-scheme: dark){
+    .logo { content: url('${LOGO_URL_LIGHT}'); } /* BLANCO */
+  }
+  @media (prefers-color-scheme: light){
+    .logo { content: url('${LOGO_URL_DARK}'); }  /* NEGRO */
   }
 </style>
 </head>
@@ -168,30 +180,30 @@ function renderTicketHTML(t, qrDataUrl) {
     <header class="head">
       <div class="branding">
         <picture>
-          ${LOGO_URL_LIGHT || LOGO_URL_DARK ? `
-            <source srcset="${LOGO_URL_DARK}" media="(prefers-color-scheme: light)">
-            <img class="logo" src="${LOGO_URL_LIGHT}" alt="logo">
-          ` : ``}
+          <source srcset="${LOGO_URL_DARK}" media="(prefers-color-scheme: light)">
+          <img class="logo" src="${LOGO_URL_LIGHT}" alt="logo">
         </picture>
         <div>
           <div class="title">${title}</div>
           <div class="subtitle">Boleto digital</div>
         </div>
       </div>
-      <div class="pill ${t.used ? "ok" : "warn"}">${t.used ? "✓ Usado" : "• No usado"}</div>
+      <div class="pill ${t.used ? "" : "warn"}">${t.used ? "✓ Usado" : "• No usado"}</div>
     </header>
 
-    <section class="info">
-      <div class="row"><span class="label">Función:</span> ${funcion || "<span class='muted'>—</span>"}</div>
-      <div class="row"><span class="label">Comprador:</span> ${comprador}</div>
-      <div class="row"><span class="label">Precio:</span> ${price}</div>
-      <div class="row"><span class="label">Estado:</span> ${estado}</div>
-      <div class="row muted"><span class="label">ID:</span> ${t.id}</div>
-    </section>
+    <section class="inner">
+      <div class="fields">
+        <div><span class="label">Función:</span> ${funcion || "<span class='muted'>—</span>"}</div>
+        <div><span class="label">Comprador:</span> ${comprador}</div>
+        <div><span class="label">Precio:</span> ${price}</div>
+        <div><span class="label">Estado:</span> ${estado}</div>
+        <div class="id-line"><span class="label">ID:</span> ${t.id}</div>
+      </div>
 
-    <aside class="qr">
-      <img src="${qrDataUrl}" alt="QR" />
-    </aside>
+      <aside class="qr">
+        <img src="${qrDataUrl}" alt="QR" />
+      </aside>
+    </section>
 
     <footer class="foot">
       <div>Presenta este boleto en la entrada</div>
@@ -202,38 +214,34 @@ function renderTicketHTML(t, qrDataUrl) {
 </html>`;
 }
 
-// ====== Endpoints ======
+// ===== API =====
 app.get("/health", (req, res) => {
   res.json({ ok: true, db: !!db, now: new Date().toISOString() });
 });
+app.get("/__routes", (req, res) => res.json(routesList()));
 
-app.get("/__routes", (req, res) => {
-  res.json(routesList());
-});
-
-// Emisión normal (mantiene tu contrato de campos)
-app.post("/api/tickets/issue", async (req, res) => {
+// Emisión (mantiene tu contrato de campos)
+app.post("/api/tickets/issue", (req, res) => {
   try {
     if (!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY) {
       return res.status(401).json({ ok:false, error:"ISSUE_KEY inválida" });
     }
-    // Pasamos tal cual los campos esperados por tu DB: buyer_name, buyer_email, function_id, function_label, event_title, price, currency, payment_id?
-    const id = insertTicket({ ...req.body });
-    return res.json({ ok:true, id, url: `${BASE_URL}/t/${id}` });
+    const id = insertTicket({ ...req.body }); // tu insert conserva campos
+    res.json({ ok:true, id, url:`${BASE_URL}/t/${id}` });
   } catch (e) {
     console.error("issue error:", e);
     res.status(500).json({ ok:false, error:String(e.message||e) });
   }
 });
 
-// Demo opcional (si lo usas)
-app.post("/api/dev/issue-demo", async (req, res) => {
+// Demo opcional
+app.post("/api/dev/issue-demo", (req, res) => {
   try {
     if (!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY) {
       return res.status(401).json({ ok:false, error:"ISSUE_KEY inválida" });
     }
     const id = insertTicket({
-      id: crypto.randomUUID?.() || undefined,
+      id: crypto.randomUUID?.(),
       buyer_name:"Prueba Aviso Admin",
       buyer_email: process.env.MAIL_ADMIN || "demo@example.com",
       function_id:"demo",
@@ -249,7 +257,7 @@ app.post("/api/dev/issue-demo", async (req, res) => {
   }
 });
 
-// Marcar como usado (idempotente)
+// Marcar como usado
 app.post("/api/tickets/:id/use", (req, res) => {
   try {
     const changed = markUsed(req.params.id);
@@ -276,7 +284,7 @@ app.get("/t/:id", async (req, res) => {
   }
 });
 
-// ====== Arranque ======
+// ===== Arranque =====
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
   console.log(`URL BASE: ${BASE_URL}`);
