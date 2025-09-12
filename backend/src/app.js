@@ -13,9 +13,9 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ISSUE_KEY = process.env.ISSUE_KEY || "";
 
 // Logos y marca de agua
-// Cargaremos SIEMPRE el logo NEGRO (LOGO_URL_DARK) y lo invertiremos en oscuro
-const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || ""; // NEGRO (ideal para claro)
-const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || ""; // BLANCO (por si falta el negro)
+// Usaremos SIEMPRE el logo NEGRO y lo convertiremos a BLANCO con CSS
+const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || "";
+const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || "";
 const WATERMARK_URL_LIGHT = process.env.WATERMARK_URL_LIGHT || "";
 const WATERMARK_URL_DARK  = process.env.WATERMARK_URL_DARK  || "";
 
@@ -46,7 +46,6 @@ function renderTicketHTML(t, qrDataUrl) {
   const estado    = t.used ? "Usado" : "No usado";
   const price     = moneyMXN(t.price);
 
-  // Tomamos el logo NEGRO si existe; si no, caemos al BLANCO
   const logoSrcAlways = LOGO_URL_DARK || LOGO_URL_LIGHT || "";
 
   return `<!DOCTYPE html>
@@ -57,13 +56,11 @@ function renderTicketHTML(t, qrDataUrl) {
 <meta name="color-scheme" content="light dark">
 <title>${title}</title>
 <style>
-  /* ===== Paleta con degradado vino -> negro ===== */
   :root{
-    --vino-header:#3b0f20; /* banda superior */
+    --vino-header:#3b0f20;
     --vino-a:#341120;
     --vino-b:#1b1219;
     --negro:#0b0c10;
-
     --fg:#eaeaea;
     --muted:#a9a9a9;
     --ok:#2e7d32;
@@ -71,117 +68,62 @@ function renderTicketHTML(t, qrDataUrl) {
   }
   @media (prefers-color-scheme: light){
     :root{
-      --fg:#111;
-      --muted:#545454;
-      --vino-header:#f0e6ea;
-      --vino-a:#efe2e8;
-      --vino-b:#ead6dd;
-      --negro:#ffffff;
+      --fg:#111; --muted:#545454;
+      --vino-header:#f0e6ea; --vino-a:#efe2e8; --vino-b:#ead6dd; --negro:#ffffff;
     }
     body{ background:#f5f5f7; }
   }
-
   body{
-    margin:0; padding:28px;
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, sans-serif;
-    color:var(--fg);
-    background:#0c0c10;
+    margin:0; padding:28px; background:#0c0c10; color:var(--fg);
+    font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial,sans-serif;
     display:flex; justify-content:center;
   }
-
   .card{
-    position:relative;
-    width:min(1100px, 96vw);
-    border-radius:18px;
-    overflow:hidden;
+    position:relative; width:min(1100px,96vw); border-radius:18px; overflow:hidden;
     box-shadow:0 22px 60px rgba(0,0,0,.35);
     background:
-      /* banda vino superior */
       linear-gradient(180deg, var(--vino-header) 0 96px, transparent 96px),
-      /* degradado del cuerpo */
       linear-gradient(180deg, var(--vino-a) 0%, var(--vino-b) 38%, var(--negro) 100%);
   }
-  /* Viñeteado sutil */
   .card::before{
-    content:'';
-    position:absolute; inset:0; pointer-events:none;
+    content:''; position:absolute; inset:0; pointer-events:none;
     background: radial-gradient(120% 140% at 50% -10%, transparent 45%, rgba(0,0,0,.25) 75%, rgba(0,0,0,.45) 100%);
   }
-
-  /* Marca de agua: centrada, completa, opacidad sutil */
   .card::after{
-    content:'';
-    position:absolute; inset:0; pointer-events:none;
-    background-repeat:no-repeat;
-    background-position:center center;
-    background-size:contain;
-    opacity:.14;
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background-repeat:no-repeat; background-position:center; background-size:contain; opacity:.14;
     ${WATERMARK_URL_LIGHT || WATERMARK_URL_DARK ? "" : "display:none;"}
   }
-  @media (prefers-color-scheme: dark){
-    .card::after{ background-image:url('${WATERMARK_URL_DARK}'); }
-  }
-  @media (prefers-color-scheme: light){
-    .card::after{ background-image:url('${WATERMARK_URL_LIGHT}'); }
-  }
+  @media (prefers-color-scheme: dark){ .card::after{ background-image:url('${WATERMARK_URL_DARK}'); } }
+  @media (prefers-color-scheme: light){ .card::after{ background-image:url('${WATERMARK_URL_LIGHT}'); } }
 
-  .inner{
-    position:relative; z-index:1;
-    display:grid;
-    grid-template-columns: 1fr 360px; /* texto | QR */
-    gap:28px;
-    padding:24px 28px 22px;
-  }
-
-  .head{
-    position:relative; z-index:1;
-    display:flex; align-items:flex-end; justify-content:space-between;
-    padding:22px 28px 12px;
-  }
+  .head{ position:relative; z-index:1; display:flex; align-items:flex-end; justify-content:space-between; padding:22px 28px 12px; }
   .branding{ display:flex; align-items:center; gap:14px; }
 
-  /* Logo: siempre cargamos la versión NEGRA
-     y la invertimos SOLO en oscuro para que se vea BLANCO */
-  .logo img{ height:70px; width:auto; display:block; }
-  @media (min-width: 900px){ .logo img{ height:86px; } }
-  @media (prefers-color-scheme: dark){
-    .logo img{
-      filter: invert(1) brightness(1.4) contrast(1.05); /* negro -> blanco limpio */
-    }
-  }
+  /* FORZAR LOGO BLANCO SIEMPRE */
+  .logo img{ height:70px; width:auto; display:block; filter: invert(1) brightness(1.4) contrast(1.05); }
+  @media (min-width:900px){ .logo img{ height:86px; } }
 
   .title{ font-size:2rem; font-weight:800; letter-spacing:.2px; margin-bottom:2px; }
   .subtitle{ font-size:.95rem; color:var(--muted); }
 
-  .pill{
-    padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem;
-    color:#fff; display:inline-flex; align-items:center; gap:8px;
-    background: var(--ok);
-    box-shadow: 0 4px 10px rgba(0,0,0,.25);
-  }
+  .pill{ padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem; color:#fff; display:inline-flex; gap:8px; background:var(--ok); box-shadow:0 4px 10px rgba(0,0,0,.25); }
   .pill.warn{ background:var(--warn); }
 
+  .inner{ position:relative; z-index:1; display:grid; grid-template-columns:1fr 360px; gap:28px; padding:24px 28px 22px; }
   .label{ font-weight:700; margin-right:6px; }
   .muted{ color:var(--muted); }
 
   .qr{ display:flex; align-items:center; justify-content:center; }
-  .qr img{
-    width:280px; height:280px;
-    background:#fff; padding:10px; border-radius:12px;
-    box-shadow:0 8px 18px rgba(0,0,0,.28);
-  }
+  .qr img{ width:280px; height:280px; background:#fff; padding:10px; border-radius:12px; box-shadow:0 8px 18px rgba(0,0,0,.28); }
 
   .fields{ display:flex; flex-direction:column; gap:14px; }
   .id-line{ color:var(--muted); margin-top:10px; }
 
-  .foot{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:14px 28px 22px; color:var(--muted); font-size:.95rem;
-  }
+  .foot{ display:flex; align-items:center; justify-content:space-between; padding:14px 28px 22px; color:var(--muted); font-size:.95rem; }
 
-  /* Responsive */
-  @media (max-width: 820px){
-    .inner{ grid-template-columns: 1fr; }
+  @media (max-width:820px){
+    .inner{ grid-template-columns:1fr; }
     .qr{ justify-content:flex-start; }
     .qr img{ width:220px; height:220px; }
   }
@@ -191,9 +133,7 @@ function renderTicketHTML(t, qrDataUrl) {
   <article class="card">
     <header class="head">
       <div class="branding">
-        <div class="logo">
-          <img src="${logoSrcAlways}" alt="logo">
-        </div>
+        <div class="logo"><img src="${logoSrcAlways}" alt="logo"></div>
         <div>
           <div class="title">${title}</div>
           <div class="subtitle">Boleto digital</div>
@@ -210,10 +150,7 @@ function renderTicketHTML(t, qrDataUrl) {
         <div><span class="label">Estado:</span> ${estado}</div>
         <div class="id-line"><span class="label">ID:</span> ${t.id}</div>
       </div>
-
-      <aside class="qr">
-        <img src="${qrDataUrl}" alt="QR" />
-      </aside>
+      <aside class="qr"><img src="${qrDataUrl}" alt="QR" /></aside>
     </section>
 
     <footer class="foot">
@@ -226,20 +163,18 @@ function renderTicketHTML(t, qrDataUrl) {
 }
 
 // ===== API =====
-app.get("/health", (req, res) => {
-  res.json({ ok: true, db: !!db, now: new Date().toISOString() });
-});
-app.get("/__routes", (req, res) => res.json(routesList()));
+app.get("/health", (req, res) => res.json({ ok:true, db:!!db, now:new Date().toISOString() }) );
+app.get("/__routes", (req, res) => res.json(routesList()) );
 
 // Emisión normal
 app.post("/api/tickets/issue", (req, res) => {
-  try {
-    if (!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY) {
+  try{
+    if(!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY){
       return res.status(401).json({ ok:false, error:"ISSUE_KEY inválida" });
     }
     const id = insertTicket({ ...req.body });
     res.json({ ok:true, id, url:`${BASE_URL}/t/${id}` });
-  } catch (e) {
+  }catch(e){
     console.error("issue error:", e);
     res.status(500).json({ ok:false, error:String(e.message||e) });
   }
@@ -247,8 +182,8 @@ app.post("/api/tickets/issue", (req, res) => {
 
 // Emisión demo
 app.post("/api/dev/issue-demo", (req, res) => {
-  try {
-    if (!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY) {
+  try{
+    if(!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY){
       return res.status(401).json({ ok:false, error:"ISSUE_KEY inválida" });
     }
     const id = insertTicket({
@@ -258,11 +193,10 @@ app.post("/api/dev/issue-demo", (req, res) => {
       function_id:"demo",
       function_label:"Función Admin — Sáb 6 Dic 18:00",
       event_title:"Los Miserables",
-      price:350,
-      currency:"MXN",
+      price:350, currency:"MXN",
     });
     res.json({ ok:true, id, url:`${BASE_URL}/t/${id}` });
-  } catch (e) {
+  }catch(e){
     console.error("dev demo error:", e);
     res.status(500).json({ ok:false, error:String(e.message||e) });
   }
@@ -270,10 +204,10 @@ app.post("/api/dev/issue-demo", (req, res) => {
 
 // Marcar como usado
 app.post("/api/tickets/:id/use", (req, res) => {
-  try {
+  try{
     const changed = markUsed(req.params.id);
     res.json({ ok:true, id:req.params.id, used:true, changed });
-  } catch (e) {
+  }catch(e){
     console.error("markUsed error:", e);
     res.status(500).json({ ok:false, error:String(e.message||e) });
   }
@@ -281,15 +215,13 @@ app.post("/api/tickets/:id/use", (req, res) => {
 
 // Ver ticket
 app.get("/t/:id", async (req, res) => {
-  try {
+  try{
     const t = getTicket(req.params.id);
-    if (!t) return res.status(404).send("No encontrado");
-
+    if(!t) return res.status(404).send("No encontrado");
     const qrUrl = `${BASE_URL}/t/${t.id}`;
     const qrDataUrl = await QRCode.toDataURL(qrUrl);
-
     res.send(renderTicketHTML(t, qrDataUrl));
-  } catch (e) {
+  }catch(e){
     console.error("render ticket error:", e);
     res.status(500).send("Error interno");
   }
@@ -300,5 +232,4 @@ app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
   console.log(`URL BASE: ${BASE_URL}`);
 });
-
 export default app;
