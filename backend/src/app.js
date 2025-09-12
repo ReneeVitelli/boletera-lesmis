@@ -53,7 +53,7 @@ function renderTicketHTML(t, qrDataUrl) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${title}</title>
 <style>
-  /* ===== Paleta: vuelve el degradado vino de tu 2ª captura ===== */
+  /* ===== Paleta: degradado vino ===== */
   :root{
     --vino-top:#1d0e16;   /* banda superior más oscura */
     --vino-main-a:#2a0f1e;
@@ -94,14 +94,14 @@ function renderTicketHTML(t, qrDataUrl) {
                 linear-gradient(135deg,var(--vino-main-a),var(--vino-main-b));
   }
 
-  /* Marca de agua: sin blur, completa, a la derecha, opaca sutil */
+  /* Marca de agua: CENTRADA, sin blur, completa, opacidad sutil */
   .card::after{
     content:'';
     position:absolute; inset:0; pointer-events:none;
     background-repeat:no-repeat;
-    background-position: right 40px center; /* a la derecha, un poco separada del borde */
-    background-size: contain;               /* se ve COMPLETA */
-    opacity:.14;                            /* sutil sin volverse borrosa */
+    background-position: center center;   /* <— CAMBIO 1: CENTRADA */
+    background-size: contain;             /* se ve COMPLETA */
+    opacity:.14;                          /* sutil */
     ${WATERMARK_URL_LIGHT || WATERMARK_URL_DARK ? "" : "display:none;"}
   }
   @media (prefers-color-scheme: dark){
