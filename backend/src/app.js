@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 10000;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ISSUE_KEY = process.env.ISSUE_KEY || "";
 
-// Logos (blanco para oscuro, negro para claro) y marca de agua
+// Logos (BLANCO para oscuro, NEGRO para claro) y marca de agua
 const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || ""; // BLANCO (oscuro)
 const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || ""; // NEGRO  (claro)
 const WATERMARK_URL_LIGHT = process.env.WATERMARK_URL_LIGHT || "";
@@ -45,20 +45,21 @@ function renderTicketHTML(t, qrDataUrl) {
   const estado    = t.used ? "Usado" : "No usado";
   const price     = moneyMXN(t.price);
 
-  // Fallbacks de logo por si falta alguna variable
-  const logoDarkSrc  = LOGO_URL_DARK  || LOGO_URL_LIGHT || "";
-  const logoLightSrc = LOGO_URL_LIGHT || LOGO_URL_DARK  || "";
+  // Fallbacks por si falta alguna variable
+  const logoSrcForDark  = LOGO_URL_LIGHT || LOGO_URL_DARK || ""; // blanco ideal para oscuro
+  const logoSrcForLight = LOGO_URL_DARK  || LOGO_URL_LIGHT || ""; // negro ideal para claro
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark">
 <title>${title}</title>
 <style>
   /* ===== Paleta con degradado vino -> negro ===== */
   :root{
-    --vino-header:#3b0f20;
+    --vino-header:#3b0f20; /* banda superior */
     --vino-a:#341120;
     --vino-b:#1b1219;
     --negro:#0b0c10;
@@ -95,16 +96,19 @@ function renderTicketHTML(t, qrDataUrl) {
     overflow:hidden;
     box-shadow:0 22px 60px rgba(0,0,0,.35);
     background:
+      /* banda vino superior */
       linear-gradient(180deg, var(--vino-header) 0 96px, transparent 96px),
+      /* degradado del cuerpo */
       linear-gradient(180deg, var(--vino-a) 0%, var(--vino-b) 38%, var(--negro) 100%);
   }
+  /* Viñeteado sutil (como la referencia) */
   .card::before{
     content:'';
     position:absolute; inset:0; pointer-events:none;
     background: radial-gradient(120% 140% at 50% -10%, transparent 45%, rgba(0,0,0,.25) 75%, rgba(0,0,0,.45) 100%);
   }
 
-  /* Marca de agua: centrada, completa, opacidad sutil */
+  /* Marca de agua: centrada, completa, opacidad sutil, sin blur */
   .card::after{
     content:'';
     position:absolute; inset:0; pointer-events:none;
@@ -124,7 +128,7 @@ function renderTicketHTML(t, qrDataUrl) {
   .inner{
     position:relative; z-index:1;
     display:grid;
-    grid-template-columns: 1fr 360px;
+    grid-template-columns: 1fr 360px; /* texto | QR */
     gap:28px;
     padding:24px 28px 22px;
   }
@@ -136,17 +140,10 @@ function renderTicketHTML(t, qrDataUrl) {
   }
   .branding{ display:flex; align-items:center; gap:14px; }
 
-  /* === LOGOTIPO: dos imágenes y mostramos la que toca === */
-  .logo{ height:70px; width:auto; display:none; }
-  @media (min-width: 900px){ .logo{ height:86px; } }
-  .dark-only{ display:none; }
-  .light-only{ display:none; }
-  @media (prefers-color-scheme: dark){
-    .dark-only{ display:block; }   /* usa versión BLANCA */
-  }
-  @media (prefers-color-scheme: light){
-    .light-only{ display:block; }  /* usa versión NEGRA  */
-  }
+  /* Logo mediante <picture> (mucho más fiable) */
+  .logo picture, .logo img{ display:block; }
+  .logo img{ height:70px; width:auto; }
+  @media (min-width: 900px){ .logo img{ height:86px; } }
 
   .title{ font-size:2rem; font-weight:800; letter-spacing:.2px; margin-bottom:2px; }
   .subtitle{ font-size:.95rem; color:var(--muted); }
@@ -177,6 +174,7 @@ function renderTicketHTML(t, qrDataUrl) {
     padding:14px 28px 22px; color:var(--muted); font-size:.95rem;
   }
 
+  /* Responsive */
   @media (max-width: 820px){
     .inner{ grid-template-columns: 1fr; }
     .qr{ justify-content:flex-start; }
@@ -188,9 +186,17 @@ function renderTicketHTML(t, qrDataUrl) {
   <article class="card">
     <header class="head">
       <div class="branding">
-        <!-- Mostramos la versión correcta según el esquema -->
-        <img class="logo dark-only"  src="${logoLightSrc}" alt="logo" aria-hidden="false">
-        <img class="logo light-only" src="${logoDarkSrc}"  alt="logo" aria-hidden="false">
+        <!-- LOGO: blanco en oscuro, negro en claro -->
+        <div class="logo">
+          <picture>
+            <!-- Oscuro: usa BLANCO -->
+            <source srcset="${logoSrcForDark}" media="(prefers-color-scheme: dark)">
+            <!-- Claro: usa NEGRO -->
+            <source srcset="${logoSrcForLight}" media="(prefers-color-scheme: light)">
+            <!-- Fallback: blanco si existe, si no, negro -->
+            <img src="${logoSrcForDark}" alt="logo">
+          </picture>
+        </div>
         <div>
           <div class="title">${title}</div>
           <div class="subtitle">Boleto digital</div>
@@ -228,6 +234,7 @@ app.get("/health", (req, res) => {
 });
 app.get("/__routes", (req, res) => res.json(routesList()));
 
+// Emisión normal
 app.post("/api/tickets/issue", (req, res) => {
   try {
     if (!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY) {
@@ -241,6 +248,7 @@ app.post("/api/tickets/issue", (req, res) => {
   }
 });
 
+// Emisión demo
 app.post("/api/dev/issue-demo", (req, res) => {
   try {
     if (!ISSUE_KEY || req.get("X-Issue-Key") !== ISSUE_KEY) {
@@ -263,6 +271,7 @@ app.post("/api/dev/issue-demo", (req, res) => {
   }
 });
 
+// Marcar como usado
 app.post("/api/tickets/:id/use", (req, res) => {
   try {
     const changed = markUsed(req.params.id);
@@ -273,6 +282,7 @@ app.post("/api/tickets/:id/use", (req, res) => {
   }
 });
 
+// Ver ticket
 app.get("/t/:id", async (req, res) => {
   try {
     const t = getTicket(req.params.id);
