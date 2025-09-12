@@ -12,9 +12,10 @@ const PORT = process.env.PORT || 10000;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ISSUE_KEY = process.env.ISSUE_KEY || "";
 
-// Logos (BLANCO para oscuro, NEGRO para claro) y marca de agua
-const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || ""; // BLANCO (oscuro)
-const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || ""; // NEGRO  (claro)
+// Logos y marca de agua
+// Cargaremos SIEMPRE el logo NEGRO (LOGO_URL_DARK) y lo invertiremos en oscuro
+const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || ""; // NEGRO (ideal para claro)
+const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || ""; // BLANCO (por si falta el negro)
 const WATERMARK_URL_LIGHT = process.env.WATERMARK_URL_LIGHT || "";
 const WATERMARK_URL_DARK  = process.env.WATERMARK_URL_DARK  || "";
 
@@ -45,9 +46,8 @@ function renderTicketHTML(t, qrDataUrl) {
   const estado    = t.used ? "Usado" : "No usado";
   const price     = moneyMXN(t.price);
 
-  // Fallbacks por si falta alguna variable
-  const logoSrcForDark  = LOGO_URL_LIGHT || LOGO_URL_DARK || ""; // blanco ideal para oscuro
-  const logoSrcForLight = LOGO_URL_DARK  || LOGO_URL_LIGHT || ""; // negro ideal para claro
+  // Tomamos el logo NEGRO si existe; si no, caemos al BLANCO
+  const logoSrcAlways = LOGO_URL_DARK || LOGO_URL_LIGHT || "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -101,14 +101,14 @@ function renderTicketHTML(t, qrDataUrl) {
       /* degradado del cuerpo */
       linear-gradient(180deg, var(--vino-a) 0%, var(--vino-b) 38%, var(--negro) 100%);
   }
-  /* Viñeteado sutil (como la referencia) */
+  /* Viñeteado sutil */
   .card::before{
     content:'';
     position:absolute; inset:0; pointer-events:none;
     background: radial-gradient(120% 140% at 50% -10%, transparent 45%, rgba(0,0,0,.25) 75%, rgba(0,0,0,.45) 100%);
   }
 
-  /* Marca de agua: centrada, completa, opacidad sutil, sin blur */
+  /* Marca de agua: centrada, completa, opacidad sutil */
   .card::after{
     content:'';
     position:absolute; inset:0; pointer-events:none;
@@ -140,10 +140,15 @@ function renderTicketHTML(t, qrDataUrl) {
   }
   .branding{ display:flex; align-items:center; gap:14px; }
 
-  /* Logo mediante <picture> (mucho más fiable) */
-  .logo picture, .logo img{ display:block; }
-  .logo img{ height:70px; width:auto; }
+  /* Logo: siempre cargamos la versión NEGRA
+     y la invertimos SOLO en oscuro para que se vea BLANCO */
+  .logo img{ height:70px; width:auto; display:block; }
   @media (min-width: 900px){ .logo img{ height:86px; } }
+  @media (prefers-color-scheme: dark){
+    .logo img{
+      filter: invert(1) brightness(1.4) contrast(1.05); /* negro -> blanco limpio */
+    }
+  }
 
   .title{ font-size:2rem; font-weight:800; letter-spacing:.2px; margin-bottom:2px; }
   .subtitle{ font-size:.95rem; color:var(--muted); }
@@ -186,16 +191,8 @@ function renderTicketHTML(t, qrDataUrl) {
   <article class="card">
     <header class="head">
       <div class="branding">
-        <!-- LOGO: blanco en oscuro, negro en claro -->
         <div class="logo">
-          <picture>
-            <!-- Oscuro: usa BLANCO -->
-            <source srcset="${logoSrcForDark}" media="(prefers-color-scheme: dark)">
-            <!-- Claro: usa NEGRO -->
-            <source srcset="${logoSrcForLight}" media="(prefers-color-scheme: light)">
-            <!-- Fallback: blanco si existe, si no, negro -->
-            <img src="${logoSrcForDark}" alt="logo">
-          </picture>
+          <img src="${logoSrcAlways}" alt="logo">
         </div>
         <div>
           <div class="title">${title}</div>
