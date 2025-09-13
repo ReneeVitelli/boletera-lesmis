@@ -23,13 +23,6 @@ const WATERMARK_URL_DARK  = process.env.WATERMARK_URL_DARK  || "";
 console.log("URL BASE:", BASE_URL);
 
 // ===== Utilidades =====
-const moneyMXN = (n) =>
-  new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-    minimumFractionDigits: 0,
-  }).format(Number(n) || 0);
-
 const routesList = () => ([
   { methods: "GET",  path: "/health" },
   { methods: "GET",  path: "/__routes" },
@@ -42,10 +35,11 @@ const routesList = () => ([
 // ===== Vista del ticket =====
 function renderTicketHTML(t, qrDataUrl) {
   const title     = t.event_title    || "Los Miserables";
-  const funcion   = t.function_label || "";
-  const comprador = `${t.buyer_name || ""} — ${t.buyer_email || ""}`;
-  const estado    = t.used ? "Usado" : "No usado";
-  const price     = moneyMXN(t.price);
+  const funcion   = t.function_label || "";                           // solo la leyenda de función
+  const usuario   = `${t.buyer_name || ""} — ${t.buyer_email || ""}`; // “Usuario”
+  const estadoTxt = t.used ? "Usado" : "No usado";
+  // “Código”: primero alumno_code, luego codigo, luego buyer_phone (para poder usarlo sin migración)
+  const codigo    = t.alumno_code || t.codigo || t.buyer_phone || "—";
 
   const logoDark  = LOGO_URL_DARK  || "";
   const logoLight = LOGO_URL_LIGHT || "";
@@ -68,12 +62,13 @@ function renderTicketHTML(t, qrDataUrl) {
     --ok:#2e7d32;
     --warn:#f57c00;
     --pill-fg:#fff;
+    --foot-fg:#bdbdbd;
   }
   @media (prefers-color-scheme: light){
     :root{
       --fg:#111; --muted:#545454;
       --vino-header:#f0e6ea; --vino-a:#efe2e8; --vino-b:#ead6dd; --negro:#ffffff;
-      --pill-fg:#222;
+      --pill-fg:#222; --foot-fg:#666;
     }
     body{ background:#f5f5f7; }
   }
@@ -104,7 +99,7 @@ function renderTicketHTML(t, qrDataUrl) {
   @media (prefers-color-scheme: light){ .logo img{ content: url('${logoDark}'); } }
 
   .title{ font-size:2rem; font-weight:800; margin-bottom:2px; }
-  .subtitle{ font-size:.95rem; color:var(--muted); }
+  .subtitle{ font-size:.95rem; color:var(--muted); } /* aquí dirá “Boleto General” */
 
   .pill{
     padding:6px 12px; border-radius:999px; font-weight:700; font-size:.95rem; color:var(--pill-fg);
@@ -126,7 +121,8 @@ function renderTicketHTML(t, qrDataUrl) {
   .fields{ display:flex; flex-direction:column; gap:14px; }
   .id-line{ color:var(--muted); margin-top:10px; }
 
-  .foot{ display:flex; align-items:center; justify-content:space-between; padding:14px 28px 22px; color:var(--muted); font-size:.95rem; }
+  .foot{ display:flex; align-items:center; justify-content:space-between; padding:14px 28px 22px; color:var(--foot-fg); font-size:.95rem; gap:16px; flex-wrap:wrap; }
+  .foot b{ color:var(--fg); }
 
   /* --------- MÓVIL --------- */
   @media (max-width:820px){
@@ -153,8 +149,8 @@ function renderTicketHTML(t, qrDataUrl) {
       <div class="branding">
         <div class="logo"><img alt="logo"></div>
         <div>
-          <div class="title">${title}</div>
-          <div class="subtitle">Boleto digital</div>
+          <div class="title">Los Miserables</div>
+          <div class="subtitle">Boleto General</div>
         </div>
       </div>
       <div class="pill pill--desktop ${t.used ? "ok" : "warn"}">${t.used ? "✓ Usado" : "• No usado"}</div>
@@ -163,9 +159,9 @@ function renderTicketHTML(t, qrDataUrl) {
     <section class="inner">
       <div class="fields">
         <div><span class="label">Función:</span> ${funcion || "<span class='muted'>—</span>"}</div>
-        <div><span class="label">Comprador:</span> ${comprador}</div>
-        <div><span class="label">Precio:</span> ${price}</div>
-        <div><span class="label">Estado:</span> ${estado}</div>
+        <div><span class="label">Usuario:</span> ${usuario}</div>
+        <div><span class="label">Código:</span> ${codigo}</div>
+        <div><span class="label">Estado:</span> ${estadoTxt}</div>
         <div class="id-line"><span class="label">ID:</span> ${t.id}</div>
       </div>
 
@@ -177,7 +173,8 @@ function renderTicketHTML(t, qrDataUrl) {
 
     <footer class="foot">
       <div>Presenta este boleto en la entrada</div>
-      <div></div>
+      <div><b>CLASIFICACIÓN:</b> 12 años en adelante.</div>
+      <div>No está permitido introducir alimentos y bebidas a la sala.</div>
     </footer>
   </article>
 </body>
@@ -185,7 +182,9 @@ function renderTicketHTML(t, qrDataUrl) {
 }
 
 // ===== API =====
-app.get("/health", (req, res) => res.json({ ok:true, db:!!db, now:new Date().toISOString() }) );
+app.get("/health", (req, res) =>
+  res.json({ ok:true, db:!!db, now:new Date().toISOString() })
+);
 app.get("/__routes", (req, res) => res.json(routesList()) );
 
 app.post("/api/tickets/issue", (req, res) => {
@@ -207,6 +206,7 @@ app.post("/api/dev/issue-demo", (req, res) => {
       id: crypto.randomUUID?.(),
       buyer_name:"Prueba Aviso Admin",
       buyer_email: process.env.MAIL_ADMIN || "demo@example.com",
+      buyer_phone: "ALU-0001", // <- demo para “Código”
       function_id:"demo",
       function_label:"Función Admin — Sáb 6 Dic 18:00",
       event_title:"Los Miserables",
