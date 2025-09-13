@@ -31,54 +31,39 @@ function resolveDbPath() {
 const DB_PATH = resolveDbPath();
 const db = new Database(DB_PATH, { fileMustExist: false });
 
-/** Ejecuta múltiples sentencias SQL separadas por ';' (ignora vacías). */
-function execMany(sql) {
-  const stmts = sql
-    .split(';')
-    .map(s => s.trim())
-    .filter(Boolean);
-  db.exec('BEGIN');
-  try {
-    for (const s of stmts) db.exec(s);
-    db.exec('COMMIT');
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
-  }
-}
-
-/** Crea tabla tickets si no existe, índices y triggers. */
+/** Crea tabla tickets si no existe, índices y trigger (todo en un solo exec). */
 function createBase() {
   const sql = `
-  CREATE TABLE IF NOT EXISTS tickets (
-    id TEXT PRIMARY KEY,
-    buyer_name     TEXT NOT NULL,
-    buyer_email    TEXT NOT NULL,
-    buyer_phone    TEXT,
-    function_id    TEXT NOT NULL,
-    function_label TEXT NOT NULL,
-    event_title    TEXT NOT NULL,
-    currency       TEXT NOT NULL DEFAULT 'MXN',
-    price          INTEGER NOT NULL DEFAULT 0,
-    payment_id     TEXT UNIQUE,     -- nulo si emisión directa
-    used           INTEGER NOT NULL DEFAULT 0,
-    student_code   TEXT,            -- <== nuevo: código del alumno
-    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at     TEXT
-  );
+CREATE TABLE IF NOT EXISTS tickets (
+  id TEXT PRIMARY KEY,
+  buyer_name     TEXT NOT NULL,
+  buyer_email    TEXT NOT NULL,
+  buyer_phone    TEXT,
+  function_id    TEXT NOT NULL,
+  function_label TEXT NOT NULL,
+  event_title    TEXT NOT NULL,
+  currency       TEXT NOT NULL DEFAULT 'MXN',
+  price          INTEGER NOT NULL DEFAULT 0,
+  payment_id     TEXT UNIQUE,     -- nulo si emisión directa
+  used           INTEGER NOT NULL DEFAULT 0,
+  student_code   TEXT,            -- código del alumno
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at     TEXT
+);
 
-  CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
-  CREATE INDEX IF NOT EXISTS idx_tickets_payment_id ON tickets(payment_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
+CREATE INDEX IF NOT EXISTS idx_tickets_payment_id ON tickets(payment_id);
 
-  -- Trigger para mantener updated_at
-  CREATE TRIGGER IF NOT EXISTS trg_tickets_updated_at
-  AFTER UPDATE ON tickets
-  FOR EACH ROW
-  BEGIN
-    UPDATE tickets SET updated_at = datetime('now') WHERE id = NEW.id;
-  END;
-  `;
-  execMany(sql);
+-- Trigger para mantener updated_at
+CREATE TRIGGER IF NOT EXISTS trg_tickets_updated_at
+AFTER UPDATE ON tickets
+FOR EACH ROW
+BEGIN
+  UPDATE tickets SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
+`;
+  // Ejecuta TODO el bloque de una vez para no romper el trigger
+  db.exec(sql);
 }
 
 /** Devuelve true si una columna existe en la tabla. */
@@ -87,7 +72,7 @@ function hasColumn(table, column) {
   return info.some(c => c.name === column);
 }
 
-/** Migra columnas que falten sin romper datos existentes. */
+/** Migra columnas/índices faltantes sin romper datos existentes. */
 function migrateColumns() {
   if (!hasColumn('tickets', 'payment_id')) {
     db.exec(`ALTER TABLE tickets ADD COLUMN payment_id TEXT UNIQUE;`);
@@ -110,20 +95,28 @@ function migrateColumns() {
   ).all();
   if (triggers.length === 0) {
     db.exec(`
-      CREATE TRIGGER trg_tickets_updated_at
-      AFTER UPDATE ON tickets
-      FOR EACH ROW
-      BEGIN
-        UPDATE tickets SET updated_at = datetime('now') WHERE id = NEW.id;
-      END;
-    `);
+CREATE TRIGGER trg_tickets_updated_at
+AFTER UPDATE ON tickets
+FOR EACH ROW
+BEGIN
+  UPDATE tickets SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
+`);
   }
 }
 
 /** Inicializa esquema: crea base y migra si hace falta. */
 function initSchema() {
-  createBase();
-  migrateColumns();
+  // transacción por seguridad
+  db.exec('BEGIN');
+  try {
+    createBase();
+    migrateColumns();
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 /** Inserta ticket; si llega payment_id y ya existe, no duplica (idempotencia webhook). */
@@ -138,7 +131,7 @@ function insertTicket({
   currency = 'MXN',
   price = 0,
   payment_id = null,
-  student_code = null, // <== NUEVO
+  student_code = null, // NUEVO
 }) {
   // Si viene payment_id, evitamos duplicar
   if (payment_id) {
@@ -149,12 +142,12 @@ function insertTicket({
   }
 
   const stmt = db.prepare(`
-    INSERT INTO tickets (
-      id, buyer_name, buyer_email, buyer_phone,
-      function_id, function_label, event_title,
-      currency, price, payment_id, used, student_code, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, datetime('now'))
-  `);
+INSERT INTO tickets (
+  id, buyer_name, buyer_email, buyer_phone,
+  function_id, function_label, event_title,
+  currency, price, payment_id, used, student_code, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, datetime('now'))
+`);
 
   stmt.run(
     id,
