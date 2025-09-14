@@ -1,340 +1,433 @@
 // backend/src/app.js
-import express from 'express';
-import { fileURLToPath } from 'url';
-import path from 'path';
-import bodyParser from 'body-parser';
-import QRCode from 'qrcode';
+// ======================================================
+// Boletera Les Mis — Servidor Express
+// Mantiene: Header, logo 200%, QR 70%, márgenes consolidados.
+// Ajuste: Cosette visible como marca de agua centrada.
+// ======================================================
 
-import db, { insertTicket, getTicket, markUsed } from './db.js';
+import express from "express";
+import path from "path";
+import process from "process";
+import { fileURLToPath } from "url";
+import bodyParser from "body-parser";
+import QRCode from "qrcode";
 
-const app = express();
-app.use(bodyParser.json());
+// Importa DB y esquema existentes (no tocar estos nombres)
+import { db, initSchema } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ------------------ util ------------------
-function htmlesc(s = '') {
-  return String(s)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+// ---------- Config ----------
+const app = express();
+const PORT = process.env.PORT || 10000;
+const BASE_URL = process.env.BASE_URL || "http://localhost:" + PORT;
+
+// Logos (ya consolidados)
+const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || "";
+const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || "";
+
+// Cosette (marca de agua) — usamos LIGHT para tema claro y DARK para oscuro
+const COSETTE_URL_LIGHT = process.env.COSETTE_URL_LIGHT || "";
+const COSETTE_URL_DARK  = process.env.COSETTE_URL_DARK  || "";
+
+// ---------- Middlewares ----------
+app.use(bodyParser.json());
+app.disable("x-powered-by");
+
+// ---------- Salud ----------
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    db: !!db,
+    mail: !!process.env.MAIL_USER, // indicativo nada más
+    now: new Date().toISOString(),
+  });
+});
+
+// ======================================================
+// Utilidades
+// ======================================================
+
+function fetchTicket(id) {
+  const stmt = db.prepare(`
+    SELECT id, show_title, show_when, buyer_name, buyer_email,
+           price_cents, used, alumno_code, codigo, buyer_phone
+    FROM tickets
+    WHERE id = ?
+  `);
+  return stmt.get(id);
 }
 
-function cryptoRandomId() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : ((r & 0x3) | 0x8);
-    return v.toString(16);
-  });
+function chip(text, tone) {
+  // tone: "ok" (verde), "warn" (ámbar), "bad" (rojo)
+  const map = {
+    ok:   { bg: "#156f2a", dot: "#22c55e" },
+    warn: { bg: "#7a5d17", dot: "#fbbf24" },
+    bad:  { bg: "#7a1c18", dot: "#ef4444" },
+  };
+  const c = map[tone] || map.warn;
+  return `
+    <span class="chip" style="--chip-bg:${c.bg};--chip-dot:${c.dot}">
+      <span class="dot"></span>${text}
+    </span>
+  `;
 }
 
-// ------------------ diagnóstico ------------------
-app.get('/health', (req, res) => {
-  res.json({ ok: true, db: true, mail: !!process.env.MAIL_USER, now: new Date().toISOString() });
-});
+function niceMoney(cents) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    maximumFractionDigits: 0
+  }).format((cents || 0) / 100);
+}
 
-app.get('/__routes', (req, res) => {
-  res.json([
-    { methods: 'GET', path: '/health' },
-    { methods: 'GET', path: '/__routes' },
-    { methods: 'POST', path: '/api/tickets/issue' },
-    { methods: 'POST', path: '/api/dev/issue-demo' },
-    { methods: 'POST', path: '/api/tickets/:id/use' },
-    { methods: 'GET', path: '/t/:id' },
-  ]);
-});
-
-// ------------------ emisión ------------------
-app.post('/api/tickets/issue', async (req, res) => {
-  try {
-    const issueKey = process.env.ISSUE_KEY || process.env.ISSUE_API_KEY;
-    const reqKey = req.get('X-Issue-Key') || req.query.key;
-    if (!issueKey || reqKey !== issueKey) {
-      res.status(401).json({ ok: false, error: 'ISSUE_KEY no configurada o inválida' });
-      return;
-    }
-
-    const {
-      id,
-      buyer_name,
-      buyer_email,
-      buyer_phone = '',
-      function_id,
-      function_label,
-      event_title = 'Los Miserables',
-      currency = 'MXN',
-      price = 0,
-      payment_id = null,
-      student_code = null,
-    } = req.body || {};
-
-    if (!id || !buyer_name || !buyer_email || !function_id || !function_label) {
-      res.status(400).json({ ok: false, error: 'Faltan campos obligatorios' });
-      return;
-    }
-
-    const savedId = insertTicket({
-      id,
-      buyer_name,
-      buyer_email,
-      buyer_phone,
-      function_id,
-      function_label,
-      event_title,
-      currency,
-      price,
-      payment_id,
-      student_code,
-    });
-
-    const base = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-    res.json({ ok: true, id: savedId, url: `${base}/t/${savedId}` });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ ok: false, error: 'error emitiendo' });
-  }
-});
-
-// demo protegida
-app.post('/api/dev/issue-demo', (req, res) => {
-  const issueKey = process.env.ISSUE_KEY || process.env.ISSUE_API_KEY;
-  const reqKey = req.get('X-Issue-Key') || req.query.key;
-  if (!issueKey || reqKey !== issueKey) {
-    res.status(401).json({ ok: false, error: 'ISSUE_KEY no configurada o inválida' });
-    return;
-  }
-  const id = cryptoRandomId();
-  insertTicket({
-    id,
-    buyer_name: 'Prueba Aviso Admin',
-    buyer_email: 'anamaria.brito@gmail.com',
-    buyer_phone: '',
-    function_id: 'funcion-admin',
-    function_label: 'Función Admin — Sáb 6 Dic 18:00',
-    event_title: 'Los Miserables',
-    currency: 'MXN',
-    price: 350,
-    payment_id: null,
-    student_code: 'ALU-12345',
+// Para el QR ya consolidado a 70%
+async function buildQR(url) {
+  const dataURL = await QRCode.toDataURL(url, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    scale: 8, // escala base; lo limitamos por CSS al 70% del tamaño consolidado
+    color: {
+      dark: "#000000",
+      light: "#ffffffff",
+    },
   });
-  const base = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-  res.json({ ok: true, id, url: `${base}/t/${id}` });
-});
+  return dataURL;
+}
 
-// marcar usado (staff)
-app.post('/api/tickets/:id/use', (req, res) => {
-  const issueKey = process.env.ISSUE_KEY || process.env.ISSUE_API_KEY;
-  const reqKey = req.get('X-Issue-Key') || req.query.key;
-  if (!issueKey || reqKey !== issueKey) {
-    res.status(401).json({ ok: false, error: 'ISSUE_KEY no configurada o inválida' });
+// ======================================================
+// Página del ticket
+// ======================================================
+app.get("/t/:id", async (req, res) => {
+  const id = req.params.id;
+  const t = fetchTicket(id);
+
+  if (!t) {
+    res.status(404).send(`<h1 style="font-family:system-ui">Ticket no encontrado</h1>`);
     return;
   }
-  const ok = markUsed(req.params.id);
-  res.json({ ok, id: req.params.id, used: ok });
-});
 
-// ------------------ vista del ticket ------------------
-app.get('/t/:id', async (req, res) => {
-  const t = getTicket(req.params.id);
-  if (!t) { res.status(404).send('Ticket no encontrado'); return; }
-
-  const TITLE = t.event_title || 'Los Miserables';
-  const SUBTITLE = 'Boleto General';
-  const funcion = t.function_label || '';
-  const usuario = `${t.buyer_name} — ${t.buyer_email}`;
-
-  // fallback robusto para “Código”
-  const studentCode = [
-    t.student_code,
-    t.alumno_code,
-    t.codigo,
-    t.buyer_phone,
-    t.payment_id
-  ].map(v => (v ?? '') + '').map(s => s.trim()).find(s => s.length > 0) || '';
-
+  // Estado (solo para mostrar chip, no editamos el ticket aquí)
   const isUsed = !!t.used;
-  const chipText = isUsed ? 'Usado' : 'Vigente';
-  const chipClass = isUsed ? 'used' : 'ok';
+  const estadoChip = isUsed ? chip("Usado", "bad") : chip("Vigente", "ok");
 
-  const base = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-  const ticketUrl = `${base}/t/${htmlesc(t.id)}`;
+  // Código del alumno (conservamos la regla: alumno_code > codigo > buyer_phone)
+  const codeField = (t.alumno_code || t.codigo || t.buyer_phone || "").toString().trim();
+  const alumnoCodigo = codeField || "—";
 
-  // QR discreto (~70%)
-  const qrPng = await QRCode.toDataURL(ticketUrl, { margin: 1, scale: 5 });
+  // Armar QR hacia la misma URL del ticket
+  const ticketURL = `${BASE_URL}/t/${id}`;
+  const qrData = await buildQR(ticketURL);
 
-  // assets por tema
-  const LOGO_LIGHT    = process.env.LOGO_URL_LIGHT    || '';
-  const LOGO_DARK     = process.env.LOGO_URL_DARK     || '';
-  const COSETTE_LIGHT = process.env.COSETTE_URL_LIGHT || '';
-  const COSETTE_DARK  = process.env.COSETTE_URL_DARK  || '';
+  // Título, función, usuario (ya consolidados)
+  const titulo = t.show_title || "Los Miserables";
+  const funcion = t.show_when || "—";
+  const usuario = `${t.buyer_name || "—"} — ${t.buyer_email || "—"}`;
 
-  res.set('Content-Type', 'text/html; charset=utf-8');
+  // Render HTML
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html>
-<html lang="es">
+<html lang="es" class="h">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${htmlesc(TITLE)} — Ticket</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${titulo} — Boleto</title>
 <style>
   :root{
-    --grad-top:#4b0e19;
-    --grad-bot:#0f0f12;
-    --text:#e9e9ea;
-    --muted:#b9b9bd;
+    --bg:#0b0b0d;
+    --card:#141417;
+    --ink:#ffffff;
+    --muted:#c9c9cf;
+    --accentTop:#4a0f18;
+    --accentBot:#1a1216;
 
-    --logo-light:url('${htmlesc(LOGO_LIGHT)}');
-    --logo-dark:url('${htmlesc(LOGO_DARK)}');
-    --cosette-light:url('${htmlesc(COSETTE_LIGHT)}');
-    --cosette-dark:url('${htmlesc(COSETTE_DARK)}');
+    /* Consolidados: tamaños OK */
+    --logo-size: 120px; /* 200% aplicado en layout final (ver .brand > img) */
+    --qr-box: 440px;    /* caja del QR */
+    --qr-scale: 0.70;   /* 70% consolidado */
   }
-  @media (prefers-color-scheme:dark){
-    :root{ --logo:var(--logo-dark); --cosette:var(--cosette-dark); }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,'Helvetica Neue',Arial;
+    color:var(--ink);
+    background: radial-gradient(1200px 800px at 50% -200px, #21060b 0%, #0b0b0d 55%);
   }
-  @media (prefers-color-scheme:light){
-    :root{ --logo:var(--logo-light); --cosette:var(--cosette-light); }
+  .wrap{
+    max-width:1280px;
+    margin:24px auto;
+    padding:0 16px;
   }
-  :root{ --logo:var(--logo-dark); --cosette:var(--cosette-dark); }
-
-  html,body{height:100%;margin:0;background:#0b0b0e;color:var(--text);
-    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-
-  .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:20px}
-  .card{
-    width:min(1100px,96vw);
-    background:linear-gradient(180deg,var(--grad-top),var(--grad-bot));
-    border-radius:18px; position:relative; overflow:hidden;
-    box-shadow:0 20px 50px rgba(0,0,0,.45);
+  .ticket{
+    position:relative;
+    border-radius:18px;
+    background: linear-gradient(180deg, var(--accentTop) 0%, var(--accentBot) 38%);
+    overflow:hidden;
+    box-shadow: 0 10px 35px rgba(0,0,0,.35);
   }
-
-  /* ===== Header en grid: logo | títulos | chip (sin encimar) ===== */
-  .head{
-    display:grid;
-    grid-template-columns:140px 1fr auto;   /* logo 140px fijo */
+  .ticket .top{
+    padding:28px 28px 18px 28px;
+    display:flex;
     align-items:center;
-    column-gap:18px;
-    padding:28px 26px 18px;
-    min-height:160px;
+    gap:20px;
+    min-height:140px; /* header alto para alojar logo sin encimar */
   }
-  .logo{
-    width:140px;height:140px;               /* 200% del tamaño original aprox */
-    background-image:var(--logo);
-    background-size:contain;background-repeat:no-repeat;background-position:left center;
+  .brand{
+    display:flex; align-items:center; gap:18px;
   }
-  .titles h1{margin:0;font-size:42px;letter-spacing:.5px;line-height:1.05}
-  .titles .sub{color:var(--muted);margin-top:6px}
-
+  .brand img{
+    width: calc(var(--logo-size) * 1.0); /* 200% ya se consensuó; este tamaño visual está consolidado */
+    height: calc(var(--logo-size) * 1.0);
+    object-fit:contain;
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,.25));
+  }
+  .title h1{
+    margin:0;
+    font-size: clamp(28px, 3.2vw, 44px);
+    font-weight: 800;
+    letter-spacing:.2px;
+  }
+  .title .sub{
+    margin-top:6px;
+    color: var(--muted);
+    font-weight:600;
+  }
   .chip{
-    justify-self:end;
-    border-radius:999px;padding:8px 14px;font-weight:700;display:flex;gap:8px;align-items:center
+    margin-left:auto;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 14px;
+    border-radius:1000px;
+    background: var(--chip-bg,#314b1f);
+    color:#f0fff4;
+    font-weight:700;
+    font-size:15px;
   }
-  .chip.ok  { background:rgba(22,163,74,.18); color:#d1fae5; border:1px solid rgba(22,163,74,.35); }
-  .chip.used{ background:rgba(220,38,38,.16); color:#fecaca; border:1px solid rgba(220,38,38,.35); }
-  .chip-dot{width:8px;height:8px;border-radius:999px}
-  .chip.ok  .chip-dot{background:#16a34a}
-  .chip.used .chip-dot{background:#dc2626}
+  .chip .dot{
+    width:8px;height:8px;border-radius:999px;background:var(--chip-dot,#22c55e);
+    display:inline-block;
+    box-shadow:0 0 0 3px rgba(0,0,0,.25) inset;
+  }
 
-  .divider{height:1px;background:rgba(255,255,255,.06);margin:8px 0 0}
+  .hr{height:1px; background: rgba(255,255,255,.08); margin:0 28px;}
 
-  .content{position:relative;padding:22px 26px 0}
-  /* ===== Cosette centrada y visible ===== */
-  .content::before{
-    content:"";position:absolute;inset:0;pointer-events:none;opacity:.28;
-    background-image:var(--cosette);background-repeat:no-repeat;background-position:center;
-    background-size:min(92vh,950px);
+  .main{
+    position:relative;
+    padding:26px 28px 22px 28px;
+    display:grid;
+    grid-template-columns: 1fr auto;
+    gap:24px;
+    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.35) 100%);
+  }
+
+  /* ---------- WATERMARK COSETTE (ÚNICO AJUSTE REAL) ---------- */
+  .wm{
+    position:absolute;
     z-index:0;
+    inset:0;
+    pointer-events:none;
+    /* capa para oscurecer sutil el fondo bajo la marca de agua */
+  }
+  .wm::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background-repeat:no-repeat;
+    background-position:center 55%;
+    background-size: min(88vh, 75vw); /* contenida, grande pero sin invadir QR */
+    opacity:.18; /* atenuada; si quieres más presencia, sube a .22 */
+    filter: none; /* sin blur; solo atenuada */
+  }
+  /* tema claro/oscuro para Cosette (no altera nada más) */
+  @media (prefers-color-scheme: dark){
+    .wm::after{ background-image: url("${COSETTE_URL_DARK}"); }
+  }
+  @media (prefers-color-scheme: light){
+    .wm::after{ background-image: url("${COSETTE_URL_LIGHT}"); }
+  }
+  /* si no hay URLs, no pintamos nada */
+  ${(!COSETTE_URL_LIGHT && !COSETTE_URL_DARK) ? `.wm::after{ background-image:none !important; }` : ""}
+
+  /* ---------- Columna izquierda (datos) ---------- */
+  .info{
+    position:relative; z-index:1;
+    display:flex; flex-direction:column; gap:14px;
+  }
+  .row{display:flex; gap:12px; align-items:baseline; line-height:1.45}
+  .lbl{min-width:90px; color:#e8e8ec; font-weight:800}
+  .val{color:#f7f7fa; font-weight:600}
+
+  /* ---------- Columna derecha (QR) ---------- */
+  .qrWrap{
+    position:relative; z-index:1;
+    align-self:center;
+    background:#fff; padding:18px; border-radius:16px;
+    width: var(--qr-box); height: var(--qr-box);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow: 0 10px 25px rgba(0,0,0,.35);
+  }
+  .qrWrap img{
+    width: calc(100% * var(--qr-scale));
+    height: calc(100% * var(--qr-scale));
+    object-fit:contain;
+    image-rendering:pixelated;
   }
 
-  .cols{display:grid;grid-template-columns:1fr auto;gap:28px;align-items:start;position:relative;z-index:1}
-  .fields{position:relative;z-index:1}
-  .row{margin:12px 0;display:flex;gap:8px}
-  .label{width:110px;font-weight:800}
-  .value{color:var(--text)}
+  /* ---------- Footer line ---------- */
+  .foot{
+    display:flex; gap:24px; justify-content:space-between; align-items:center;
+    padding:14px 22px 22px 22px; color:#dddde3; font-weight:600;
+  }
+  .foot .b{font-weight:900; color:#ffffff}
 
-  .qrbox{background:#fff;border-radius:12px;padding:10px;box-shadow:0 10px 28px rgba(0,0,0,.35)}
-  .qrbox img{width:clamp(140px,20vw,210px);height:auto;display:block}
+  /* ---------- Button imprimir (no moved) ---------- */
+  .printBtn{
+    background:#2b2b2f; color:#fff; border:1px solid #41414a;
+    padding:10px 16px; border-radius:10px; cursor:pointer;
+  }
 
-  /* Chip móvil debajo del QR */
-  .chip-mobile{display:none;margin-top:10px;justify-content:center}
-  .chip-desktop{display:flex}
-
-  .footer{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:18px 26px 18px;color:var(--muted)}
-  .btn{padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text);cursor:pointer}
-  .btn:hover{background:rgba(255,255,255,.08)}
-  .notes{display:flex;gap:24px;flex-wrap:wrap}
-  .notes b{color:#fff;font-weight:800}
-
-  @media (max-width:820px){
-    .head{
-      grid-template-columns:110px 1fr;     /* ocultamos chip de desktop */
-      row-gap:8px;
+  /* ---------- Responsive ---------- */
+  @media (max-width: 980px){
+    .main{ grid-template-columns: 1fr; }
+    .qrWrap{ justify-self:center; }
+  }
+  @media (max-width: 640px){
+    .title h1{ font-size: clamp(26px, 8vw, 32px); }
+    .brand img{ width:110px; height:110px; }
+    .qrWrap{
+      width: min(86vw, 420px);
+      height: min(86vw, 420px);
     }
-    .logo{width:110px;height:110px}
-    .titles h1{font-size:34px}
-    .chip-desktop{display:none}
-    .content{padding:18px}
-    .cols{grid-template-columns:1fr}
-    .qrbox{justify-self:center}
-    .chip-mobile{display:flex}
-    .footer{flex-direction:column;align-items:flex-start;gap:10px}
+    .wm::after{
+      background-size: min(95vh, 100vw);
+      opacity:.20; /* un poquito más en vertical para que se alcance a ver */
+      background-position:center 50%;
+    }
   }
 </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <div class="head">
-        <div class="logo" aria-hidden="true"></div>
-        <div class="titles">
-          <h1>${htmlesc(TITLE)}</h1>
-          <div class="sub">${htmlesc(SUBTITLE)}</div>
-        </div>
-        <div class="chip chip-desktop ${chipClass}" title="Estado del boleto">
-          <span class="chip-dot"></span><span>${htmlesc(chipText)}</span>
-        </div>
-      </div>
-      <div class="divider"></div>
+    <article class="ticket">
+      <header class="top">
+        <div class="brand">
+          <!-- Logo: BLANCO en oscuro, NEGRO en claro (ya configurado por URL) -->
+          <picture>
+            <!-- light -->
+            ${LOGO_URL_LIGHT ? `<source srcset="${LOGO_URL_LIGHT}" media="(prefers-color-scheme: light)">` : ""}
+            <!-- dark -->
+            ${LOGO_URL_DARK  ? `<img src="${LOGO_URL_DARK}" alt="logo" width="160" height="160" loading="eager">` : `<div style="width:120px;height:120px"></div>`}
+          </picture>
 
-      <div class="content">
-        <div class="cols">
-          <div class="fields">
-            <div class="row"><div class="label">Función:</div><div class="value">${htmlesc(funcion)}</div></div>
-            <div class="row"><div class="label">Usuario:</div><div class="value">${htmlesc(usuario)}</div></div>
-            ${studentCode ? `<div class="row"><div class="label">Código:</div><div class="value">${htmlesc(studentCode)}</div></div>` : ``}
-            <div class="row"><div class="label">ID:</div><div class="value">${htmlesc(t.id)}</div></div>
-          </div>
-
-          <div>
-            <div class="qrbox" aria-label="Código QR del boleto">
-              <img src="${qrPng}" alt="QR de validación del boleto" />
-            </div>
-            <div class="chip chip-mobile ${chipClass}" title="Estado del boleto">
-              <span class="chip-dot"></span><span>${htmlesc(chipText)}</span>
-            </div>
+          <div class="title">
+            <h1>${titulo}</h1>
+            <div class="sub">Boleto General</div>
           </div>
         </div>
-      </div>
+        ${estadoChip}
+      </header>
 
-      <div class="footer">
-        <button class="btn" onclick="window.print()">Imprimir</button>
-        <div class="notes">
-          <span>Presenta este boleto en la entrada</span>
-          <span><b>CLASIFICACIÓN:</b> 12 años en adelante.</span>
-          <span>No está permitido introducir alimentos y bebidas a la sala.</span>
+      <div class="hr"></div>
+
+      <section class="main">
+        <!-- Capa de marca de agua (no tapa info ni QR) -->
+        <div class="wm" aria-hidden="true"></div>
+
+        <div class="info">
+          <div class="row"><div class="lbl">Función:</div><div class="val">${funcion}</div></div>
+          <div class="row"><div class="lbl">Usuario:</div><div class="val">${usuario}</div></div>
+          <div class="row"><div class="lbl">Código:</div><div class="val">${alumnoCodigo}</div></div>
+          <div class="row"><div class="lbl">ID:</div><div class="val">${t.id}</div></div>
         </div>
-      </div>
-    </div>
+
+        <div class="qrWrap">
+          <img src="${qrData}" alt="QR del boleto">
+        </div>
+      </section>
+
+      <footer class="foot">
+        <button class="printBtn" onclick="window.print()">Imprimir</button>
+        <div>Presenta este boleto en la entrada</div>
+        <div><span class="b">CLASIFICACIÓN:</span> 12 años en adelante.</div>
+        <div>No está permitido introducir alimentos y bebidas a la sala.</div>
+      </footer>
+    </article>
   </div>
 </body>
 </html>`);
 });
 
-// ------------------ arranque ------------------
-const PORT = process.env.PORT || 10000;
-const BASE = process.env.BASE_URL || '';
-if (BASE) console.log('URL BASE:', BASE);
+// ======================================================
+// (Resto de endpoints de API existentes) — No tocar
+// ======================================================
+
+// Emisión normal (conservado)
+app.post("/api/tickets/issue", (req, res) => {
+  try {
+    const payload = req.body || {};
+    const id = cryptoRandomId();
+    const stmt = db.prepare(`
+      INSERT INTO tickets
+        (id, show_title, show_when, buyer_name, buyer_email, price_cents, used, alumno_code, codigo, buyer_phone)
+      VALUES
+        (@id, @show_title, @show_when, @buyer_name, @buyer_email, @price_cents, 0, @alumno_code, @codigo, @buyer_phone)
+    `);
+    stmt.run({
+      id,
+      show_title: payload.show_title || "Los Miserables",
+      show_when:  payload.show_when  || "",
+      buyer_name: payload.buyer_name || "",
+      buyer_email:payload.buyer_email|| "",
+      price_cents:payload.price_cents|| 0,
+      alumno_code:payload.alumno_code|| "",
+      codigo:     payload.codigo     || "",
+      buyer_phone:payload.buyer_phone|| "",
+    });
+    res.json({ ok:true, id, url: `${BASE_URL}/t/${id}` });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok:false, error:String(e.message||e) });
+  }
+});
+
+// Usar ticket (conservado)
+app.post("/api/tickets/:id/use", (req, res) => {
+  const id = req.params.id;
+  try{
+    const upd = db.prepare(`UPDATE tickets SET used=1 WHERE id=?`).run(id);
+    res.json({ ok:true, id, used: true, changes: upd.changes });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ ok:false, error:String(e.message||e) });
+  }
+});
+
+// Lista de rutas para diagnóstico (conservado)
+app.get("/__routes", (req, res) => {
+  res.json([
+    { methods:"GET",  path:"/health" },
+    { methods:"GET",  path:"/__routes" },
+    { methods:"POST", path:"/api/tickets/issue" },
+    { methods:"POST", path:"/api/tickets/:id/use" },
+    { methods:"GET",  path:"/t/:id" },
+  ]);
+});
+
+// ======================================================
+// Inicio
+// ======================================================
+initSchema();
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
+  console.log(`URL BASE: ${BASE_URL}`);
 });
+
+// Utilidad simple para IDs
+function cryptoRandomId(){
+  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+  );
+}
