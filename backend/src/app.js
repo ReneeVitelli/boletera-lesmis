@@ -5,7 +5,6 @@ import path from 'path';
 import bodyParser from 'body-parser';
 import QRCode from 'qrcode';
 
-// 👇 Importación correcta: default + funciones nombradas
 import db, { insertTicket, getTicket, markUsed } from './db.js';
 
 const app = express();
@@ -14,7 +13,7 @@ app.use(bodyParser.json());
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ------------------ util ------------------
+// ------------------ utils ------------------
 function htmlesc(s = '') {
   return String(s)
     .replaceAll('&', '&amp;')
@@ -25,7 +24,6 @@ function htmlesc(s = '') {
 }
 
 function cryptoRandomId() {
-  // UUID v4 simple
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : ((r & 0x3) | 0x8);
@@ -70,7 +68,7 @@ app.post('/api/tickets/issue', async (req, res) => {
       currency = 'MXN',
       price = 0,
       payment_id = null,
-      student_code = null, // campo formal “Código” del alumno
+      student_code = null,
     } = req.body || {};
 
     if (!id || !buyer_name || !buyer_email || !function_id || !function_label) {
@@ -100,7 +98,7 @@ app.post('/api/tickets/issue', async (req, res) => {
   }
 });
 
-// Demo rápida (protegida)
+// Demo (protegida)
 app.post('/api/dev/issue-demo', (req, res) => {
   const issueKey = process.env.ISSUE_KEY || process.env.ISSUE_API_KEY;
   const reqKey = req.get('X-Issue-Key') || req.query.key;
@@ -126,7 +124,7 @@ app.post('/api/dev/issue-demo', (req, res) => {
   res.json({ ok: true, id, url: `${base}/t/${id}` });
 });
 
-// Marcar usado (solo para escáner / staff)
+// Marcar usado (solo staff)
 app.post('/api/tickets/:id/use', (req, res) => {
   const issueKey = process.env.ISSUE_KEY || process.env.ISSUE_API_KEY;
   const reqKey = req.get('X-Issue-Key') || req.query.key;
@@ -148,7 +146,7 @@ app.get('/t/:id', async (req, res) => {
   const funcion = t.function_label || '';
   const usuario = `${t.buyer_name} — ${t.buyer_email}`;
 
-  // Fallback en cadena para “Código”
+  // Fallback robusto para mostrar “Código” del alumno
   const studentCode = [
     t.student_code,
     t.alumno_code,
@@ -163,13 +161,15 @@ app.get('/t/:id', async (req, res) => {
 
   const base = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
   const ticketUrl = `${base}/t/${htmlesc(t.id)}`;
-  const qrPng = await QRCode.toDataURL(ticketUrl, { margin: 1, scale: 5 }); // QR discreto
 
-  // Variables EXACTAS como las tienes en Render
-  const LOGO_LIGHT    = process.env.LOGO_URL_LIGHT    || ''; // negro (tema claro)
-  const LOGO_DARK     = process.env.LOGO_URL_DARK     || ''; // blanco (tema oscuro)
-  const COSETTE_LIGHT = process.env.COSETTE_URL_LIGHT || ''; // Cosette negra (tema claro)
-  const COSETTE_DARK  = process.env.COSETTE_URL_DARK  || ''; // Cosette blanca (tema oscuro)
+  // QR más discreto: antes 300px máx; ahora ~70% (210px máx)
+  const qrPng = await QRCode.toDataURL(ticketUrl, { margin: 1, scale: 5 });
+
+  // URLs desde Render
+  const LOGO_LIGHT    = process.env.LOGO_URL_LIGHT    || '';
+  const LOGO_DARK     = process.env.LOGO_URL_DARK     || '';
+  const COSETTE_LIGHT = process.env.COSETTE_URL_LIGHT || '';
+  const COSETTE_DARK  = process.env.COSETTE_URL_DARK  || '';
 
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!DOCTYPE html>
@@ -187,10 +187,10 @@ app.get('/t/:id', async (req, res) => {
     --text:#e9e9ea;
     --muted:#b9b9bd;
 
-    --logo-light:url('${htmlesc(LOGO_LIGHT)}'); /* logo negro para tema claro */
-    --logo-dark:url('${htmlesc(LOGO_DARK)}');   /* logo blanco para tema oscuro */
-    --cosette-light:url('${htmlesc(COSETTE_LIGHT)}'); /* Cosette negra p/tema claro */
-    --cosette-dark:url('${htmlesc(COSETTE_DARK)}');   /* Cosette blanca p/tema oscuro */
+    --logo-light:url('${htmlesc(LOGO_LIGHT)}');   /* logo negro (tema claro)   */
+    --logo-dark:url('${htmlesc(LOGO_DARK)}');     /* logo blanco (tema oscuro) */
+    --cosette-light:url('${htmlesc(COSETTE_LIGHT)}'); /* Cosette negra (claro) */
+    --cosette-dark:url('${htmlesc(COSETTE_DARK)}');   /* Cosette blanca (oscuro)*/
   }
   @media (prefers-color-scheme:dark){
     :root{ --logo:var(--logo-dark); --cosette:var(--cosette-dark); }
@@ -202,6 +202,7 @@ app.get('/t/:id', async (req, res) => {
 
   html,body{height:100%;margin:0;background:#0b0b0e;color:var(--text);
     font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+
   .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:20px}
   .card{
     width:min(1100px,96vw);
@@ -209,8 +210,20 @@ app.get('/t/:id', async (req, res) => {
     border-radius:18px; position:relative; overflow:hidden;
     box-shadow:0 20px 50px rgba(0,0,0,.45);
   }
-  .head{display:flex;align-items:center;gap:18px;padding:22px 26px 12px;position:relative}
-  .logo{width:72px;height:72px;background-image:var(--logo);background-size:contain;background-repeat:no-repeat;background-position:center; transform:scale(2);} /* 200% */
+
+  /* === Encabezado más alto para que quepa el logo al 200% === */
+  .head{
+    display:flex;align-items:center;gap:18px;
+    padding:28px 26px 22px;                 /* antes: 22px 26px 12px */
+    min-height:160px;                       /* asegura espacio para logo 144px */
+    position:relative;
+  }
+  .logo{
+    width:72px;height:72px;
+    background-image:var(--logo);
+    background-size:contain;background-repeat:no-repeat;background-position:center;
+    transform:scale(2);                      /* 200% */
+  }
   h1{margin:0;font-size:40px;letter-spacing:.5px}
   .sub{color:var(--muted);margin-top:4px}
   .chip{
@@ -223,11 +236,12 @@ app.get('/t/:id', async (req, res) => {
   .chip.ok  .chip-dot{background:#16a34a}
   .chip.used .chip-dot{background:#dc2626}
 
-  .divider{height:1px;background:rgba(255,255,255,.06);margin:10px 0 0}
+  .divider{height:1px;background:rgba(255,255,255,.06);margin:8px 0 0}
 
   .content{position:relative;padding:22px 26px 0}
+  /* === Cosette centrada y claramente visible (sin blur) === */
   .content::before{
-    content:"";position:absolute;inset:0;pointer-events:none;opacity:.20; /* Cosette visible */
+    content:"";position:absolute;inset:0;pointer-events:none;opacity:.28;
     background-image:var(--cosette);background-repeat:no-repeat;background-position:center;
     background-size:min(92vh,950px);
   }
@@ -235,11 +249,13 @@ app.get('/t/:id', async (req, res) => {
   .cols{display:grid;grid-template-columns:1fr auto;gap:28px;align-items:start}
   .fields{position:relative;z-index:1}
   .row{margin:12px 0;display:flex;gap:8px}
-  .label{width:110px;color:var(--text);font-weight:800}   /* NEGRITAS */
+  .label{width:110px;color:var(--text);font-weight:800}
   .value{color:var(--text)}
 
   .qrbox{background:#fff;border-radius:12px;padding:10px;box-shadow:0 10px 28px rgba(0,0,0,.35)}
-  .qrbox img{width:clamp(200px,28vw,300px);height:auto;display:block} /* QR discreto */
+  /* === QR al ~70% del tamaño anterior ===
+     antes: clamp(200px,28vw,300px) -> ahora: clamp(140px,20vw,210px) */
+  .qrbox img{width:clamp(140px,20vw,210px);height:auto;display:block}
 
   .footer{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:18px 26px 18px;color:var(--muted)}
   .btn{padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text);cursor:pointer}
@@ -248,8 +264,8 @@ app.get('/t/:id', async (req, res) => {
   .notes b{color:#fff;font-weight:800}
 
   @media (max-width:820px){
-    .head{padding:18px 18px 8px}
-    .logo{width:56px;height:56px; transform:scale(2);} /* mantener 200% en móvil */
+    .head{padding:24px 18px 16px;min-height:160px}
+    .logo{width:56px;height:56px;transform:scale(2)}
     h1{font-size:32px}
     .content{padding:18px}
     .cols{grid-template-columns:1fr}
