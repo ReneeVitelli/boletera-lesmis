@@ -1,5 +1,172 @@
 📌 Snippet de emisión de boleto de prueba
 
+
+$ISSUE_KEY = "test-issue-key-123"
+$BASE = "https://boletera-lesmis.onrender.com"
+
+$body = @{
+  buyer_name     = "Ana Brito"
+  buyer_email    = "anamaria.brito@gmail.com"
+  buyer_phone    = "5550001111"
+  function_id    = "funcion-2"
+  function_label = "Función 2 — Sáb 8 Nov 18:00"
+  price          = 350
+  currency       = "MXN"
+  event_title    = "Los Miserables"
+} | ConvertTo-Json
+
+$headers = @{ "X-Issue-Key" = $ISSUE_KEY }
+
+$params = @{
+  Method      = 'POST'
+  Uri         = "$BASE/api/tickets/issue"
+  ContentType = 'application/json; charset=utf-8'
+  Headers     = $headers
+  Body        = $body
+}
+
+$resp = Invoke-RestMethod @params
+
+"Respuesta de emisión:"
+$resp
+"URL del ticket:"
+"$BASE/t/$($resp.id)"
+
+
+
+
+_________________________________________
+
+A) Demo (emite sin pensar en el body)
+
+
+$ISSUE_KEY = "test-issue-key-123"
+$BASE = "https://boletera-lesmis.onrender.com"
+
+$demo = Invoke-RestMethod -Method POST `
+  -Uri "$BASE/api/dev/issue-demo" `
+  -Headers @{ "X-Issue-Key" = $ISSUE_KEY }
+
+"Demo resp:"
+$demo
+"URL del ticket:"
+"$BASE/t/$($demo.id)"
+
+Invoke-RestMethod -Method POST -Uri "$BASE/api/tickets/$($demo.id)/use"
+
+_________________________________________
+
+B) Emisión normal (con tu body de prueba)
+
+
+$ISSUE_KEY = "test-issue-key-123"
+$BASE = "https://boletera-lesmis.onrender.com"
+
+$body = @{
+  buyer_name     = "Prueba Arranque"
+  buyer_email    = "renee.vitelli@gmail.com"
+  buyer_phone    = "5550001111"
+  function_id    = "funcion-1"
+  function_label = "Función 1 — Sáb 1 Nov 16:00"
+  price          = 350
+  currency       = "MXN"
+  event_title    = "Los Miserables"
+} | ConvertTo-Json
+
+$resp = Invoke-RestMethod -Method POST `
+  -Uri "$BASE/api/tickets/issue" `
+  -ContentType "application/json" `
+  -Headers @{ "X-Issue-Key" = $ISSUE_KEY } `
+  -Body $body
+
+"Respuesta de emisión:"
+$resp
+"URL del ticket:"
+"$BASE/t/$($resp.id)"
+
+Invoke-RestMethod -Method POST -Uri "$BASE/api/tickets/$($resp.id)/use"
+
+
+__________________________________________
+
+
+# === CONFIG ===
+$ISSUE_KEY = "test-issue-key-123"
+$BASE = "https://boletera-lesmis.onrender.com"
+
+# === EMITIR UN BOLETO DE PRUEBA ===
+$body = @{
+  buyer_name     = "Prueba Arranque"
+  buyer_email    = "renee.vitelli@gmail.com"
+  buyer_phone    = "5550001111"
+  function_id    = "funcion-1"
+  function_label = "Función 1 — Sáb 1 Nov 16:00"
+  price          = 350
+  currency       = "MXN"
+  event_title    = "Los Miserables"
+} | ConvertTo-Json
+
+$resp = Invoke-RestMethod -Method POST `
+  -Uri "$BASE/api/tickets/issue" `
+  -ContentType "application/json" `
+  -Headers @{ "X-Issue-Key" = $ISSUE_KEY } `
+  -Body $body
+
+"Respuesta de emisión:"
+$resp
+
+"URL del ticket:"
+"$BASE/t/$($resp.id)"
+
+# === MARCAR COMO USADO ===
+$useResp = Invoke-RestMethod -Method POST `
+  -Uri "$BASE/api/tickets/$($resp.id)/use"
+
+"Respuesta al marcar como usado:"
+$useResp
+
+
+___________________________________________
+
+
+# === CONFIG ===
+$ISSUE_KEY = "test-issue-key-123"
+$BASE = "https://boletera-lesmis.onrender.com"
+
+# === EMITIR UN BOLETO DE PRUEBA ===
+$body = @{
+  buyer_name     = "Prueba Arranque"
+  buyer_email    = "renee.vitelli@gmail.com"
+  buyer_phone    = "5550001111"
+  function_id    = "funcion-1"
+  function_label = "Función 1 — Sáb 1 Nov 16:00"
+  price          = 350
+  currency       = "MXN"
+  event_title    = "Los Miserables"
+} | ConvertTo-Json
+
+$resp = Invoke-RestMethod -Method POST `
+  -Uri "$BASE/api/tickets/issue" `
+  -ContentType "application/json" `
+  -Headers @{ "X-Issue-Key" = $ISSUE_KEY } `
+  -Body $body
+
+"Respuesta de emisión:"
+$resp
+
+# === ABRIR EL TICKET EN EL NAVEGADOR ===
+"URL del ticket:"
+"$BASE/t/$($resp.id)"
+
+# === MARCAR COMO USADO ===
+$useResp = Invoke-RestMethod -Method POST `
+  -Uri "$BASE/api/tickets/$($resp.id)/use"
+
+"Respuesta al marcar como usado:"
+$useResp
+
+________________________________________
+
 $body = @{
   buyer_name     = "Prueba emisión OK"
   buyer_email    = "renee.vitelli@gmail.com"

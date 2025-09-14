@@ -13,7 +13,7 @@ app.use(bodyParser.json());
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ------------------ utils ------------------
+// ------------------ util ------------------
 function htmlesc(s = '') {
   return String(s)
     .replaceAll('&', '&amp;')
@@ -47,7 +47,7 @@ app.get('/__routes', (req, res) => {
   ]);
 });
 
-// ------------------ API emisión ------------------
+// ------------------ emisión ------------------
 app.post('/api/tickets/issue', async (req, res) => {
   try {
     const issueKey = process.env.ISSUE_KEY || process.env.ISSUE_API_KEY;
@@ -98,7 +98,7 @@ app.post('/api/tickets/issue', async (req, res) => {
   }
 });
 
-// Demo (protegida)
+// demo protegida
 app.post('/api/dev/issue-demo', (req, res) => {
   const issueKey = process.env.ISSUE_KEY || process.env.ISSUE_API_KEY;
   const reqKey = req.get('X-Issue-Key') || req.query.key;
@@ -124,7 +124,7 @@ app.post('/api/dev/issue-demo', (req, res) => {
   res.json({ ok: true, id, url: `${base}/t/${id}` });
 });
 
-// Marcar usado (solo staff)
+// marcar usado (staff)
 app.post('/api/tickets/:id/use', (req, res) => {
   const issueKey = process.env.ISSUE_KEY || process.env.ISSUE_API_KEY;
   const reqKey = req.get('X-Issue-Key') || req.query.key;
@@ -136,7 +136,7 @@ app.post('/api/tickets/:id/use', (req, res) => {
   res.json({ ok, id: req.params.id, used: ok });
 });
 
-// ------------------ Vista del ticket ------------------
+// ------------------ vista del ticket ------------------
 app.get('/t/:id', async (req, res) => {
   const t = getTicket(req.params.id);
   if (!t) { res.status(404).send('Ticket no encontrado'); return; }
@@ -146,7 +146,7 @@ app.get('/t/:id', async (req, res) => {
   const funcion = t.function_label || '';
   const usuario = `${t.buyer_name} — ${t.buyer_email}`;
 
-  // Fallback robusto para mostrar “Código” del alumno
+  // fallback robusto para “Código”
   const studentCode = [
     t.student_code,
     t.alumno_code,
@@ -162,35 +162,33 @@ app.get('/t/:id', async (req, res) => {
   const base = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
   const ticketUrl = `${base}/t/${htmlesc(t.id)}`;
 
-  // QR más discreto: antes 300px máx; ahora ~70% (210px máx)
+  // QR discreto (~70%)
   const qrPng = await QRCode.toDataURL(ticketUrl, { margin: 1, scale: 5 });
 
-  // URLs desde Render
+  // assets por tema
   const LOGO_LIGHT    = process.env.LOGO_URL_LIGHT    || '';
   const LOGO_DARK     = process.env.LOGO_URL_DARK     || '';
   const COSETTE_LIGHT = process.env.COSETTE_URL_LIGHT || '';
   const COSETTE_DARK  = process.env.COSETTE_URL_DARK  || '';
 
   res.set('Content-Type', 'text/html; charset=utf-8');
-  res.send(`<!DOCTYPE html>
+  res.send(`<!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${htmlesc(TITLE)} — Ticket</title>
 <style>
   :root{
     --grad-top:#4b0e19;
     --grad-bot:#0f0f12;
-    --card-bg:#141418;
-    --card-border:#1f1f25;
     --text:#e9e9ea;
     --muted:#b9b9bd;
 
-    --logo-light:url('${htmlesc(LOGO_LIGHT)}');   /* logo negro (tema claro)   */
-    --logo-dark:url('${htmlesc(LOGO_DARK)}');     /* logo blanco (tema oscuro) */
-    --cosette-light:url('${htmlesc(COSETTE_LIGHT)}'); /* Cosette negra (claro) */
-    --cosette-dark:url('${htmlesc(COSETTE_DARK)}');   /* Cosette blanca (oscuro)*/
+    --logo-light:url('${htmlesc(LOGO_LIGHT)}');
+    --logo-dark:url('${htmlesc(LOGO_DARK)}');
+    --cosette-light:url('${htmlesc(COSETTE_LIGHT)}');
+    --cosette-dark:url('${htmlesc(COSETTE_DARK)}');
   }
   @media (prefers-color-scheme:dark){
     :root{ --logo:var(--logo-dark); --cosette:var(--cosette-dark); }
@@ -211,24 +209,26 @@ app.get('/t/:id', async (req, res) => {
     box-shadow:0 20px 50px rgba(0,0,0,.45);
   }
 
-  /* === Encabezado más alto para que quepa el logo al 200% === */
+  /* ===== Header en grid: logo | títulos | chip (sin encimar) ===== */
   .head{
-    display:flex;align-items:center;gap:18px;
-    padding:28px 26px 22px;                 /* antes: 22px 26px 12px */
-    min-height:160px;                       /* asegura espacio para logo 144px */
-    position:relative;
+    display:grid;
+    grid-template-columns:140px 1fr auto;   /* logo 140px fijo */
+    align-items:center;
+    column-gap:18px;
+    padding:28px 26px 18px;
+    min-height:160px;
   }
   .logo{
-    width:72px;height:72px;
+    width:140px;height:140px;               /* 200% del tamaño original aprox */
     background-image:var(--logo);
-    background-size:contain;background-repeat:no-repeat;background-position:center;
-    transform:scale(2);                      /* 200% */
+    background-size:contain;background-repeat:no-repeat;background-position:left center;
   }
-  h1{margin:0;font-size:40px;letter-spacing:.5px}
-  .sub{color:var(--muted);margin-top:4px}
+  .titles h1{margin:0;font-size:42px;letter-spacing:.5px;line-height:1.05}
+  .titles .sub{color:var(--muted);margin-top:6px}
+
   .chip{
-    position:absolute;top:18px;right:18px;border-radius:999px;
-    padding:8px 14px;font-weight:700;display:flex;gap:8px;align-items:center
+    justify-self:end;
+    border-radius:999px;padding:8px 14px;font-weight:700;display:flex;gap:8px;align-items:center
   }
   .chip.ok  { background:rgba(22,163,74,.18); color:#d1fae5; border:1px solid rgba(22,163,74,.35); }
   .chip.used{ background:rgba(220,38,38,.16); color:#fecaca; border:1px solid rgba(220,38,38,.35); }
@@ -239,23 +239,26 @@ app.get('/t/:id', async (req, res) => {
   .divider{height:1px;background:rgba(255,255,255,.06);margin:8px 0 0}
 
   .content{position:relative;padding:22px 26px 0}
-  /* === Cosette centrada y claramente visible (sin blur) === */
+  /* ===== Cosette centrada y visible ===== */
   .content::before{
     content:"";position:absolute;inset:0;pointer-events:none;opacity:.28;
     background-image:var(--cosette);background-repeat:no-repeat;background-position:center;
     background-size:min(92vh,950px);
+    z-index:0;
   }
 
-  .cols{display:grid;grid-template-columns:1fr auto;gap:28px;align-items:start}
+  .cols{display:grid;grid-template-columns:1fr auto;gap:28px;align-items:start;position:relative;z-index:1}
   .fields{position:relative;z-index:1}
   .row{margin:12px 0;display:flex;gap:8px}
-  .label{width:110px;color:var(--text);font-weight:800}
+  .label{width:110px;font-weight:800}
   .value{color:var(--text)}
 
   .qrbox{background:#fff;border-radius:12px;padding:10px;box-shadow:0 10px 28px rgba(0,0,0,.35)}
-  /* === QR al ~70% del tamaño anterior ===
-     antes: clamp(200px,28vw,300px) -> ahora: clamp(140px,20vw,210px) */
   .qrbox img{width:clamp(140px,20vw,210px);height:auto;display:block}
+
+  /* Chip móvil debajo del QR */
+  .chip-mobile{display:none;margin-top:10px;justify-content:center}
+  .chip-desktop{display:flex}
 
   .footer{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:18px 26px 18px;color:var(--muted)}
   .btn{padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text);cursor:pointer}
@@ -264,12 +267,17 @@ app.get('/t/:id', async (req, res) => {
   .notes b{color:#fff;font-weight:800}
 
   @media (max-width:820px){
-    .head{padding:24px 18px 16px;min-height:160px}
-    .logo{width:56px;height:56px;transform:scale(2)}
-    h1{font-size:32px}
+    .head{
+      grid-template-columns:110px 1fr;     /* ocultamos chip de desktop */
+      row-gap:8px;
+    }
+    .logo{width:110px;height:110px}
+    .titles h1{font-size:34px}
+    .chip-desktop{display:none}
     .content{padding:18px}
     .cols{grid-template-columns:1fr}
     .qrbox{justify-self:center}
+    .chip-mobile{display:flex}
     .footer{flex-direction:column;align-items:flex-start;gap:10px}
   }
 </style>
@@ -283,7 +291,7 @@ app.get('/t/:id', async (req, res) => {
           <h1>${htmlesc(TITLE)}</h1>
           <div class="sub">${htmlesc(SUBTITLE)}</div>
         </div>
-        <div class="chip ${chipClass}" title="Estado del boleto">
+        <div class="chip chip-desktop ${chipClass}" title="Estado del boleto">
           <span class="chip-dot"></span><span>${htmlesc(chipText)}</span>
         </div>
       </div>
@@ -298,8 +306,13 @@ app.get('/t/:id', async (req, res) => {
             <div class="row"><div class="label">ID:</div><div class="value">${htmlesc(t.id)}</div></div>
           </div>
 
-          <div class="qrbox" aria-label="Código QR del boleto">
-            <img src="${qrPng}" alt="QR de validación del boleto" />
+          <div>
+            <div class="qrbox" aria-label="Código QR del boleto">
+              <img src="${qrPng}" alt="QR de validación del boleto" />
+            </div>
+            <div class="chip chip-mobile ${chipClass}" title="Estado del boleto">
+              <span class="chip-dot"></span><span>${htmlesc(chipText)}</span>
+            </div>
           </div>
         </div>
       </div>
