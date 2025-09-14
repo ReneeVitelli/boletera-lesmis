@@ -1,53 +1,69 @@
 // backend/src/db.js
 import Database from "better-sqlite3";
-import fs from "fs";
-import path from "path";
+import path from "node:path";
+import fs from "node:fs";
 
-const DATA_DIR = process.env.DATA_DIR || "/var/data";
-const DB_PATH  = process.env.DB_PATH  || path.join(DATA_DIR, "tickets.db");
+const DB_PATH = process.env.DB_PATH || "/var/data/tickets.db";
 
-let dbInstance = null;
+let _db = null;
 
-/**
- * Devuelve la conexión singleton. Debes llamar antes a initSchema().
- */
 export function getDB() {
-  if (!dbInstance) {
-    throw new Error("DB no inicializada. Llama primero a initSchema().");
+  if (_db) return _db;
+  // Asegura carpeta
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  _db = new Database(DB_PATH);
+  _db.pragma("journal_mode = WAL");
+  return _db;
+}
+
+function columnExists(db, table, column) {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all();
+  return rows.some(r => r.name === column);
+}
+
+function ensureColumn(db, table, column, ddl) {
+  if (!columnExists(db, table, column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
   }
-  return dbInstance;
 }
 
 /**
- * Abre la BD y garantiza el esquema base. Es idempotente.
+ * Crea tablas base si no existen y aplica migraciones idempotentes
+ * (no rompe datos existentes).
  */
 export async function initSchema() {
-  if (!dbInstance) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    dbInstance = new Database(DB_PATH);
-    dbInstance.pragma("journal_mode = WAL");
-  }
+  const db = getDB();
 
-  const execMany = (sql) => dbInstance.exec(sql);
-
-  // Esquema mínimo y seguro (no rompe si ya existe).
-  execMany(`
+  // Tabla tickets (si no existe)
+  db.exec(`
     CREATE TABLE IF NOT EXISTS tickets (
-      id           TEXT PRIMARY KEY,
-      title        TEXT,             -- "Los Miserables"
-      show_label   TEXT,             -- "Función Admin — Sáb 6 Dic 18:00"
-      show_date    TEXT,             -- ISO si lo necesitas
-      buyer_name   TEXT,
-      buyer_email  TEXT,
-      buyer_phone  TEXT,
-      alumno_code  TEXT,             -- aquí guardamos el código (ALU-12345 o 555...)
-      price_cents  INTEGER,          -- opcional
-      used         INTEGER DEFAULT 0, -- 0/1
-      issued_at    TEXT DEFAULT (datetime('now'))
+      id TEXT PRIMARY KEY,
+      buyer_name TEXT,
+      buyer_email TEXT,
+      status TEXT DEFAULT 'vigente',
+      price_cents INTEGER DEFAULT 0,
+      created_at INTEGER,
+      used_at INTEGER
     );
-
-    CREATE INDEX IF NOT EXISTS idx_tickets_used ON tickets(used);
   `);
 
-  return dbInstance;
+  // ---- Migraciones idempotentes ----
+  // 1) show_title: título de la obra (usado por el render del boleto)
+  ensureColumn(db, "tickets", "show_title", `TEXT DEFAULT 'Los Miserables'`);
+
+  // 2) function_label: texto “Función Admin — Sáb 6 Dic 18:00” (si lo usa tu app)
+  ensureColumn(db, "tickets", "function_label", `TEXT`);
+
+  // 3) alumno_code: código del alumno que ahora mostramos en el boleto
+  ensureColumn(db, "tickets", "alumno_code", `TEXT`);
+
+  // (Agrega aquí futuros ensureColumn(...) sin miedo: son seguros)
+
+  // Índices útiles (idempotentes)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+    CREATE INDEX IF NOT EXISTS idx_tickets_buyer_email ON tickets(buyer_email);
+  `);
+
+  return db;
 }
