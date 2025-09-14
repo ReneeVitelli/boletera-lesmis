@@ -9,16 +9,23 @@ let _db = null;
 
 export function getDB() {
   if (_db) return _db;
-  // Asegura carpeta
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   _db = new Database(DB_PATH);
   _db.pragma("journal_mode = WAL");
   return _db;
 }
 
+function tableInfo(db, table) {
+  try {
+    return db.prepare(`PRAGMA table_info(${table})`).all();
+  } catch {
+    return [];
+  }
+}
+
 function columnExists(db, table, column) {
-  const rows = db.prepare(`PRAGMA table_info(${table})`).all();
-  return rows.some(r => r.name === column);
+  const rows = tableInfo(db, table);
+  return rows.some((r) => r.name === column);
 }
 
 function ensureColumn(db, table, column, ddl) {
@@ -27,14 +34,19 @@ function ensureColumn(db, table, column, ddl) {
   }
 }
 
+function ensureIndexOnExistingColumn(db, indexName, table, column) {
+  if (!columnExists(db, table, column)) return; // no existe → no intentes crear índice
+  db.exec(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${table}(${column});`);
+}
+
 /**
- * Crea tablas base si no existen y aplica migraciones idempotentes
- * (no rompe datos existentes).
+ * Crea tablas base y aplica migraciones idempotentes.
+ * Seguro para correr múltiples veces.
  */
 export async function initSchema() {
   const db = getDB();
 
-  // Tabla tickets (si no existe)
+  // Tabla base (si no existe). Usa 'status' como nombre moderno por omisión.
   db.exec(`
     CREATE TABLE IF NOT EXISTS tickets (
       id TEXT PRIMARY KEY,
@@ -47,23 +59,21 @@ export async function initSchema() {
     );
   `);
 
-  // ---- Migraciones idempotentes ----
-  // 1) show_title: título de la obra (usado por el render del boleto)
-  ensureColumn(db, "tickets", "show_title", `TEXT DEFAULT 'Los Miserables'`);
+  // --- Migraciones idempotentes (no rompen datos existentes) ---
+  // Algunas instalaciones viejas pudieron usar 'estado' en vez de 'status'.
+  // No forzamos renombres: sólo evitamos fallas y aceptamos ambas.
 
-  // 2) function_label: texto “Función Admin — Sáb 6 Dic 18:00” (si lo usa tu app)
+  // Campos nuevos usados por el render del ticket:
+  ensureColumn(db, "tickets", "show_title",   `TEXT DEFAULT 'Los Miserables'`);
   ensureColumn(db, "tickets", "function_label", `TEXT`);
+  ensureColumn(db, "tickets", "alumno_code",    `TEXT`);
 
-  // 3) alumno_code: código del alumno que ahora mostramos en el boleto
-  ensureColumn(db, "tickets", "alumno_code", `TEXT`);
+  // Índices: crea sólo si la columna existe (status o estado).
+  ensureIndexOnExistingColumn(db, "idx_tickets_status", "tickets", "status");
+  ensureIndexOnExistingColumn(db, "idx_tickets_estado", "tickets", "estado");
 
-  // (Agrega aquí futuros ensureColumn(...) sin miedo: son seguros)
-
-  // Índices útiles (idempotentes)
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
-    CREATE INDEX IF NOT EXISTS idx_tickets_buyer_email ON tickets(buyer_email);
-  `);
+  // Otros índices útiles
+  ensureIndexOnExistingColumn(db, "idx_tickets_buyer_email", "tickets", "buyer_email");
 
   return db;
 }
