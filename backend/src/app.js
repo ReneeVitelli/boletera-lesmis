@@ -1,7 +1,7 @@
-// backend/src/app.js
+﻿// backend/src/app.js
 // ======================================================
-// Boletera Les Mis — Servidor Express
-// Mantiene: Header, logo 200%, QR 70%, márgenes consolidados.
+// Boletera Les Mis â€” Servidor Express
+// Mantiene: Header, logo 200%, QR 70%, mÃ¡rgenes consolidados.
 // Ajuste: Cosette visible como marca de agua centrada.
 // ======================================================
 
@@ -13,7 +13,7 @@ import bodyParser from "body-parser";
 import QRCode from "qrcode";
 
 // Importa DB y esquema existentes (no tocar estos nombres)
-import { db, initSchema } from "./db.js";
+import { initSchema, getDB } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +27,7 @@ const BASE_URL = process.env.BASE_URL || "http://localhost:" + PORT;
 const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || "";
 const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || "";
 
-// Cosette (marca de agua) — usamos LIGHT para tema claro y DARK para oscuro
+// Cosette (marca de agua) â€” usamos LIGHT para tema claro y DARK para oscuro
 const COSETTE_URL_LIGHT = process.env.COSETTE_URL_LIGHT || "";
 const COSETTE_URL_DARK  = process.env.COSETTE_URL_DARK  || "";
 
@@ -40,7 +40,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     db: !!db,
-    mail: !!process.env.MAIL_USER, // indicativo nada más
+    mail: !!process.env.MAIL_USER, // indicativo nada mÃ¡s
     now: new Date().toISOString(),
   });
 });
@@ -60,7 +60,7 @@ function fetchTicket(id) {
 }
 
 function chip(text, tone) {
-  // tone: "ok" (verde), "warn" (ámbar), "bad" (rojo)
+  // tone: "ok" (verde), "warn" (Ã¡mbar), "bad" (rojo)
   const map = {
     ok:   { bg: "#156f2a", dot: "#22c55e" },
     warn: { bg: "#7a5d17", dot: "#fbbf24" },
@@ -87,7 +87,7 @@ async function buildQR(url) {
   const dataURL = await QRCode.toDataURL(url, {
     errorCorrectionLevel: "M",
     margin: 1,
-    scale: 8, // escala base; lo limitamos por CSS al 70% del tamaño consolidado
+    scale: 8, // escala base; lo limitamos por CSS al 70% del tamaÃ±o consolidado
     color: {
       dark: "#000000",
       light: "#ffffffff",
@@ -97,7 +97,7 @@ async function buildQR(url) {
 }
 
 // ======================================================
-// Página del ticket
+// PÃ¡gina del ticket
 // ======================================================
 app.get("/t/:id", async (req, res) => {
   const id = req.params.id;
@@ -108,22 +108,22 @@ app.get("/t/:id", async (req, res) => {
     return;
   }
 
-  // Estado (solo para mostrar chip, no editamos el ticket aquí)
+  // Estado (solo para mostrar chip, no editamos el ticket aquÃ­)
   const isUsed = !!t.used;
   const estadoChip = isUsed ? chip("Usado", "bad") : chip("Vigente", "ok");
 
-  // Código del alumno (conservamos la regla: alumno_code > codigo > buyer_phone)
+  // CÃ³digo del alumno (conservamos la regla: alumno_code > codigo > buyer_phone)
   const codeField = (t.alumno_code || t.codigo || t.buyer_phone || "").toString().trim();
-  const alumnoCodigo = codeField || "—";
+  const alumnoCodigo = codeField || "â€”";
 
   // Armar QR hacia la misma URL del ticket
   const ticketURL = `${BASE_URL}/t/${id}`;
   const qrData = await buildQR(ticketURL);
 
-  // Título, función, usuario (ya consolidados)
+  // TÃ­tulo, funciÃ³n, usuario (ya consolidados)
   const titulo = t.show_title || "Los Miserables";
-  const funcion = t.show_when || "—";
-  const usuario = `${t.buyer_name || "—"} — ${t.buyer_email || "—"}`;
+  const funcion = t.show_when || "â€”";
+  const usuario = `${t.buyer_name || "â€”"} â€” ${t.buyer_email || "â€”"}`;
 
   // Render HTML
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -132,7 +132,7 @@ app.get("/t/:id", async (req, res) => {
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${titulo} — Boleto</title>
+<title>${titulo} â€” Boleto</title>
 <style>
   :root{
     --bg:#0b0b0d;
@@ -142,7 +142,7 @@ app.get("/t/:id", async (req, res) => {
     --accentTop:#4a0f18;
     --accentBot:#1a1216;
 
-    /* Consolidados: tamaños OK */
+    /* Consolidados: tamaÃ±os OK */
     --logo-size: 120px; /* 200% aplicado en layout final (ver .brand > img) */
     --qr-box: 440px;    /* caja del QR */
     --qr-scale: 0.70;   /* 70% consolidado */
@@ -178,7 +178,7 @@ app.get("/t/:id", async (req, res) => {
     display:flex; align-items:center; gap:18px;
   }
   .brand img{
-    width: calc(var(--logo-size) * 1.0); /* 200% ya se consensuó; este tamaño visual está consolidado */
+    width: calc(var(--logo-size) * 1.0); /* 200% ya se consensuÃ³; este tamaÃ±o visual estÃ¡ consolidado */
     height: calc(var(--logo-size) * 1.0);
     object-fit:contain;
     filter: drop-shadow(0 1px 0 rgba(0,0,0,.25));
@@ -223,7 +223,7 @@ app.get("/t/:id", async (req, res) => {
     background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.35) 100%);
   }
 
-  /* ---------- WATERMARK COSETTE (ÚNICO AJUSTE REAL) ---------- */
+  /* ---------- WATERMARK COSETTE (ÃšNICO AJUSTE REAL) ---------- */
   .wm{
     position:absolute;
     z-index:0;
@@ -238,10 +238,10 @@ app.get("/t/:id", async (req, res) => {
     background-repeat:no-repeat;
     background-position:center 55%;
     background-size: min(88vh, 75vw); /* contenida, grande pero sin invadir QR */
-    opacity:.18; /* atenuada; si quieres más presencia, sube a .22 */
+    opacity:.18; /* atenuada; si quieres mÃ¡s presencia, sube a .22 */
     filter: none; /* sin blur; solo atenuada */
   }
-  /* tema claro/oscuro para Cosette (no altera nada más) */
+  /* tema claro/oscuro para Cosette (no altera nada mÃ¡s) */
   @media (prefers-color-scheme: dark){
     .wm::after{ background-image: url("${COSETTE_URL_DARK}"); }
   }
@@ -303,7 +303,7 @@ app.get("/t/:id", async (req, res) => {
     }
     .wm::after{
       background-size: min(95vh, 100vw);
-      opacity:.20; /* un poquito más en vertical para que se alcance a ver */
+      opacity:.20; /* un poquito mÃ¡s en vertical para que se alcance a ver */
       background-position:center 50%;
     }
   }
@@ -337,9 +337,9 @@ app.get("/t/:id", async (req, res) => {
         <div class="wm" aria-hidden="true"></div>
 
         <div class="info">
-          <div class="row"><div class="lbl">Función:</div><div class="val">${funcion}</div></div>
+          <div class="row"><div class="lbl">FunciÃ³n:</div><div class="val">${funcion}</div></div>
           <div class="row"><div class="lbl">Usuario:</div><div class="val">${usuario}</div></div>
-          <div class="row"><div class="lbl">Código:</div><div class="val">${alumnoCodigo}</div></div>
+          <div class="row"><div class="lbl">CÃ³digo:</div><div class="val">${alumnoCodigo}</div></div>
           <div class="row"><div class="lbl">ID:</div><div class="val">${t.id}</div></div>
         </div>
 
@@ -351,8 +351,8 @@ app.get("/t/:id", async (req, res) => {
       <footer class="foot">
         <button class="printBtn" onclick="window.print()">Imprimir</button>
         <div>Presenta este boleto en la entrada</div>
-        <div><span class="b">CLASIFICACIÓN:</span> 12 años en adelante.</div>
-        <div>No está permitido introducir alimentos y bebidas a la sala.</div>
+        <div><span class="b">CLASIFICACIÃ“N:</span> 12 aÃ±os en adelante.</div>
+        <div>No estÃ¡ permitido introducir alimentos y bebidas a la sala.</div>
       </footer>
     </article>
   </div>
@@ -361,10 +361,10 @@ app.get("/t/:id", async (req, res) => {
 });
 
 // ======================================================
-// (Resto de endpoints de API existentes) — No tocar
+// (Resto de endpoints de API existentes) â€” No tocar
 // ======================================================
 
-// Emisión normal (conservado)
+// EmisiÃ³n normal (conservado)
 app.post("/api/tickets/issue", (req, res) => {
   try {
     const payload = req.body || {};
@@ -405,7 +405,7 @@ app.post("/api/tickets/:id/use", (req, res) => {
   }
 });
 
-// Lista de rutas para diagnóstico (conservado)
+// Lista de rutas para diagnÃ³stico (conservado)
 app.get("/__routes", (req, res) => {
   res.json([
     { methods:"GET",  path:"/health" },
@@ -420,6 +420,8 @@ app.get("/__routes", (req, res) => {
 // Inicio
 // ======================================================
 initSchema();
+await initSchema();
+const db = getDB();
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
   console.log(`URL BASE: ${BASE_URL}`);
@@ -431,3 +433,5 @@ function cryptoRandomId(){
     (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
   );
 }
+
+
