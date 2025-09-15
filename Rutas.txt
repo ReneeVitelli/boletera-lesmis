@@ -193,3 +193,11 @@ Enlace al Logo Negro: https://i.postimg.cc/HWR8fdjd/Logo-Simple-Mono-Dark.png
 Enlace de Cosette Negra: https://i.postimg.cc/sx5BYHSb/Cosette-Negra.png
 
 Enlace de Cosette Blanca: https://i.postimg.cc/nc55jdTn/Cosette-Blanca.png
+_____________________________________________
+
+👉 Si en algún momento algo se descuadra, podemos volver a esto con:
+
+git checkout lock/ticket-ui-2025-09-13
+# o
+git checkout tags/ticket-ui-locked-2025-09-13
+
