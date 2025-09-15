@@ -1,437 +1,314 @@
 ﻿// backend/src/app.js
-// ======================================================
-// Boletera Les Mis â€” Servidor Express
-// Mantiene: Header, logo 200%, QR 70%, mÃ¡rgenes consolidados.
-// Ajuste: Cosette visible como marca de agua centrada.
-// ======================================================
-
 import express from "express";
 import path from "path";
-import process from "process";
 import { fileURLToPath } from "url";
-import bodyParser from "body-parser";
 import QRCode from "qrcode";
 
-// Importa DB y esquema existentes (no tocar estos nombres)
+// BD
 import { initSchema, getDB } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ---------- Config ----------
 const app = express();
-const PORT = process.env.PORT || 10000;
-const BASE_URL = process.env.BASE_URL || "http://localhost:" + PORT;
+app.use(express.json());
 
-// Logos (ya consolidados)
+// ---------- utilidades de entorno (logos / cosette) ----------
 const LOGO_URL_LIGHT = process.env.LOGO_URL_LIGHT || "";
 const LOGO_URL_DARK  = process.env.LOGO_URL_DARK  || "";
-
-// Cosette (marca de agua) â€” usamos LIGHT para tema claro y DARK para oscuro
 const COSETTE_URL_LIGHT = process.env.COSETTE_URL_LIGHT || "";
 const COSETTE_URL_DARK  = process.env.COSETTE_URL_DARK  || "";
 
-// ---------- Middlewares ----------
-app.use(bodyParser.json());
-app.disable("x-powered-by");
-
-// ---------- Salud ----------
+// ---------- salud ----------
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
-    db: !!db,
-    mail: !!process.env.MAIL_USER, // indicativo nada mÃ¡s
+    db: true,
+    mail: !!process.env.SMTP_USER && !!process.env.SMTP_PASS,
     now: new Date().toISOString(),
   });
 });
 
-// ======================================================
-// Utilidades
-// ======================================================
+// ---------- helper: carga ticket sin romper si faltan columnas ----------
+function loadTicketById(db, id) {
+  // Leemos *todas* las columnas disponibles; evitamos nombrar columnas
+  // que podrían no existir para no romper con SQLITE_ERROR.
+  const row = db.prepare("SELECT * FROM tickets WHERE id = ?").get(id);
+  if (!row) return null;
 
-function fetchTicket(id) {
-  const stmt = db.prepare(`
-    SELECT id, show_title, show_when, buyer_name, buyer_email,
-           price_cents, used, alumno_code, codigo, buyer_phone
-    FROM tickets
-    WHERE id = ?
-  `);
-  return stmt.get(id);
-}
+  // Normalizamos datos esperados por la UI
+  const showTitle =
+    row.show_title ??
+    row.showTitle ??
+    row.title ??
+    "Los Miserables";
 
-function chip(text, tone) {
-  // tone: "ok" (verde), "warn" (Ã¡mbar), "bad" (rojo)
-  const map = {
-    ok:   { bg: "#156f2a", dot: "#22c55e" },
-    warn: { bg: "#7a5d17", dot: "#fbbf24" },
-    bad:  { bg: "#7a1c18", dot: "#ef4444" },
+  const showWhen =
+    row.show_when ??
+    row.showWhen ??
+    row.funcion ??
+    row.function_when ??
+    row.when ??
+    ""; // si no hay, queda vacío
+
+  const buyerName =
+    row.buyer_name ??
+    row.comprador ??
+    row.usuario ??
+    "—";
+
+  const buyerEmail =
+    row.buyer_email ??
+    row.email ??
+    row.correo ??
+    "";
+
+  // status compatible: preferimos 'status'; si no, usamos 'estado'
+  const status =
+    row.status ??
+    row.estado ??
+    "VIGENTE";
+
+  // código del alumno con múltiples fuentes de respaldo
+  const studentCode =
+    row.student_code ??
+    row.alumno_code ??
+    row.codigo ??
+    row.buyer_phone ??
+    row.phone ??
+    ""; // puede quedar vacío si no hay
+
+  // contenido del QR: si ya lo tienes guardado en alguna col, úsalo,
+  // de lo contrario generaremos a partir del link del ticket.
+  const qrPayload =
+    row.qr ??
+    row.qr_url ??
+    null;
+
+  return {
+    id: String(row.id),
+    showTitle,
+    showWhen,
+    buyerName,
+    buyerEmail,
+    studentCode,
+    status,
+    qrPayload,
   };
-  const c = map[tone] || map.warn;
-  return `
-    <span class="chip" style="--chip-bg:${c.bg};--chip-dot:${c.dot}">
-      <span class="dot"></span>${text}
-    </span>
-  `;
 }
 
-function niceMoney(cents) {
-  return new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-    maximumFractionDigits: 0
-  }).format((cents || 0) / 100);
-}
-
-// Para el QR ya consolidado a 70%
-async function buildQR(url) {
-  const dataURL = await QRCode.toDataURL(url, {
-    errorCorrectionLevel: "M",
-    margin: 1,
-    scale: 8, // escala base; lo limitamos por CSS al 70% del tamaÃ±o consolidado
-    color: {
-      dark: "#000000",
-      light: "#ffffffff",
-    },
-  });
-  return dataURL;
-}
-
-// ======================================================
-// PÃ¡gina del ticket
-// ======================================================
+// ---------- página del ticket ----------
 app.get("/t/:id", async (req, res) => {
-  const id = req.params.id;
-  const t = fetchTicket(id);
+  try {
+    const db = getDB();
+    const id = req.params.id;
 
-  if (!t) {
-    res.status(404).send(`<h1 style="font-family:system-ui">Ticket no encontrado</h1>`);
-    return;
-  }
+    const t = loadTicketById(db, id);
+    if (!t) {
+      return res.status(404).send("Ticket no encontrado");
+    }
 
-  // Estado (solo para mostrar chip, no editamos el ticket aquÃ­)
-  const isUsed = !!t.used;
-  const estadoChip = isUsed ? chip("Usado", "bad") : chip("Vigente", "ok");
+    // Estado: “chip” verde (VIGENTE) o rojo (USADO) arriba a la derecha
+    const chipLabel = t.status?.toUpperCase() === "USADO" ? "Usado" : "Vigente";
+    const chipClass  = t.status?.toUpperCase() === "USADO" ? "chip-used" : "chip-valid";
 
-  // CÃ³digo del alumno (conservamos la regla: alumno_code > codigo > buyer_phone)
-  const codeField = (t.alumno_code || t.codigo || t.buyer_phone || "").toString().trim();
-  const alumnoCodigo = codeField || "â€”";
+    // URL del propio ticket (para QR por defecto)
+    const selfURL = `${process.env.BASE_URL || ""}/t/${encodeURIComponent(id)}`;
 
-  // Armar QR hacia la misma URL del ticket
-  const ticketURL = `${BASE_URL}/t/${id}`;
-  const qrData = await buildQR(ticketURL);
+    // Generamos QR (si no venía de BD)
+    const qrText = t.qrPayload || selfURL;
+    const qrDataURL = await QRCode.toDataURL(qrText, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      scale: 6, // queda más “discreto” con el marco que ya tienes
+    });
 
-  // TÃ­tulo, funciÃ³n, usuario (ya consolidados)
-  const titulo = t.show_title || "Los Miserables";
-  const funcion = t.show_when || "â€”";
-  const usuario = `${t.buyer_name || "â€”"} â€” ${t.buyer_email || "â€”"}`;
-
-  // Render HTML
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(`<!doctype html>
-<html lang="es" class="h">
+    // Render minimal via HTML (manteniendo tu diseño consolidado)
+    res.type("html").send(`<!doctype html>
+<html lang="es">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${titulo} â€” Boleto</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${t.showTitle} — Boleto</title>
 <style>
   :root{
-    --bg:#0b0b0d;
-    --card:#141417;
-    --ink:#ffffff;
-    --muted:#c9c9cf;
-    --accentTop:#4a0f18;
-    --accentBot:#1a1216;
-
-    /* Consolidados: tamaÃ±os OK */
-    --logo-size: 120px; /* 200% aplicado en layout final (ver .brand > img) */
-    --qr-box: 440px;    /* caja del QR */
-    --qr-scale: 0.70;   /* 70% consolidado */
+    --card-radius: 14px;
+    --bg1:#0f0f12;
+    --grad1:#3d0f15;
+    --grad2:#130a0e;
+    --text:#ececec;
+    --muted:#cfcfd2;
+    --chip-green:#1f8f3a;
+    --chip-red:#a33a3a;
   }
-  *{box-sizing:border-box}
-  html,body{height:100%}
   body{
     margin:0;
-    font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,'Helvetica Neue',Arial;
-    color:var(--ink);
-    background: radial-gradient(1200px 800px at 50% -200px, #21060b 0%, #0b0b0d 55%);
+    background: var(--bg1);
+    color:var(--text);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji','Segoe UI Emoji';
   }
   .wrap{
-    max-width:1280px;
-    margin:24px auto;
-    padding:0 16px;
+    max-width: 1180px;
+    padding: 24px;
+    margin: 0 auto;
   }
   .ticket{
-    position:relative;
-    border-radius:18px;
-    background: linear-gradient(180deg, var(--accentTop) 0%, var(--accentBot) 38%);
-    overflow:hidden;
-    box-shadow: 0 10px 35px rgba(0,0,0,.35);
+    background: linear-gradient(180deg, var(--grad1) 0%, var(--grad2) 100%);
+    border-radius: var(--card-radius);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 10px 28px rgba(0,0,0,0.5);
+    overflow: hidden;
+    position: relative;
   }
-  .ticket .top{
-    padding:28px 28px 18px 28px;
+  .head{
     display:flex;
     align-items:center;
-    gap:20px;
-    min-height:140px; /* header alto para alojar logo sin encimar */
+    gap:18px;
+    padding: 28px 32px 18px;
+    position: relative;
   }
   .brand{
     display:flex; align-items:center; gap:18px;
   }
-  .brand img{
-    width: calc(var(--logo-size) * 1.0); /* 200% ya se consensuÃ³; este tamaÃ±o visual estÃ¡ consolidado */
-    height: calc(var(--logo-size) * 1.0);
-    object-fit:contain;
-    filter: drop-shadow(0 1px 0 rgba(0,0,0,.25));
+  .logo{
+    height: 120px; width:120px; border-radius: 50%;
+    background: center/contain no-repeat url("${LOGO_URL_DARK}");
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,.4));
+    flex: 0 0 auto;
   }
-  .title h1{
-    margin:0;
-    font-size: clamp(28px, 3.2vw, 44px);
-    font-weight: 800;
-    letter-spacing:.2px;
-  }
-  .title .sub{
-    margin-top:6px;
-    color: var(--muted);
-    font-weight:600;
-  }
+  .titles h1{ margin:0; font-size: clamp(28px, 4.6vw, 52px); line-height:1; }
+  .titles .subtitle{ margin-top:6px; color: var(--muted); }
+
   .chip{
-    margin-left:auto;
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
-    padding:10px 14px;
-    border-radius:1000px;
-    background: var(--chip-bg,#314b1f);
-    color:#f0fff4;
-    font-weight:700;
-    font-size:15px;
+    position: absolute; right: 28px; top: 20px;
+    padding: 8px 14px; border-radius: 999px;
+    font-weight: 600; font-size: 14px;
+    color: #fff;
+    display:flex; align-items:center; gap:8px;
   }
-  .chip .dot{
-    width:8px;height:8px;border-radius:999px;background:var(--chip-dot,#22c55e);
-    display:inline-block;
-    box-shadow:0 0 0 3px rgba(0,0,0,.25) inset;
+  .chip::before{ content:""; width:8px; height:8px; border-radius:50%; background:#fff; opacity:.85; }
+  .chip-valid{ background: var(--chip-green); }
+  .chip-used{  background: var(--chip-red); }
+
+  .divider{ height:1px; background: rgba(255,255,255,.12); margin: 8px 0 0; }
+
+  .body{
+    display:grid; grid-template-columns: 1fr auto; gap: 28px;
+    padding: 24px 32px 28px;
+    position: relative;
+    min-height: 380px;
   }
 
-  .hr{height:1px; background: rgba(255,255,255,.08); margin:0 28px;}
-
-  .main{
-    position:relative;
-    padding:26px 28px 22px 28px;
-    display:grid;
-    grid-template-columns: 1fr auto;
-    gap:24px;
-    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.35) 100%);
-  }
-
-  /* ---------- WATERMARK COSETTE (ÃšNICO AJUSTE REAL) ---------- */
-  .wm{
-    position:absolute;
-    z-index:0;
-    inset:0;
-    pointer-events:none;
-    /* capa para oscurecer sutil el fondo bajo la marca de agua */
-  }
-  .wm::after{
-    content:"";
-    position:absolute;
-    inset:0;
-    background-repeat:no-repeat;
-    background-position:center 55%;
-    background-size: min(88vh, 75vw); /* contenida, grande pero sin invadir QR */
-    opacity:.18; /* atenuada; si quieres mÃ¡s presencia, sube a .22 */
-    filter: none; /* sin blur; solo atenuada */
-  }
-  /* tema claro/oscuro para Cosette (no altera nada mÃ¡s) */
-  @media (prefers-color-scheme: dark){
-    .wm::after{ background-image: url("${COSETTE_URL_DARK}"); }
+  /* Cosette centrada y visible detrás del contenido */
+  .cosette{
+    position: absolute;
+    inset: 0;
+    background-position: center 30%;
+    background-repeat: no-repeat;
+    background-size: min(82vh, 760px);
+    opacity: .18;           /* atenuada, sin blur */
+    pointer-events: none;
+    filter: grayscale(100%); /* sutil */
   }
   @media (prefers-color-scheme: light){
-    .wm::after{ background-image: url("${COSETTE_URL_LIGHT}"); }
+    .logo{ background-image: url("${LOGO_URL_LIGHT}"); }
+    .cosette{ background-image: url("${COSETTE_URL_LIGHT}"); opacity:.22; }
   }
-  /* si no hay URLs, no pintamos nada */
-  ${(!COSETTE_URL_LIGHT && !COSETTE_URL_DARK) ? `.wm::after{ background-image:none !important; }` : ""}
-
-  /* ---------- Columna izquierda (datos) ---------- */
-  .info{
-    position:relative; z-index:1;
-    display:flex; flex-direction:column; gap:14px;
-  }
-  .row{display:flex; gap:12px; align-items:baseline; line-height:1.45}
-  .lbl{min-width:90px; color:#e8e8ec; font-weight:800}
-  .val{color:#f7f7fa; font-weight:600}
-
-  /* ---------- Columna derecha (QR) ---------- */
-  .qrWrap{
-    position:relative; z-index:1;
-    align-self:center;
-    background:#fff; padding:18px; border-radius:16px;
-    width: var(--qr-box); height: var(--qr-box);
-    display:flex; align-items:center; justify-content:center;
-    box-shadow: 0 10px 25px rgba(0,0,0,.35);
-  }
-  .qrWrap img{
-    width: calc(100% * var(--qr-scale));
-    height: calc(100% * var(--qr-scale));
-    object-fit:contain;
-    image-rendering:pixelated;
+  @media (prefers-color-scheme: dark){
+    .logo{ background-image: url("${LOGO_URL_DARK}"); }
+    .cosette{ background-image: url("${COSETTE_URL_DARK}"); opacity:.22; }
   }
 
-  /* ---------- Footer line ---------- */
-  .foot{
+  .fields{
+    z-index: 1;
+  }
+  .row{ margin: 12px 0; }
+  .label{ color: var(--muted); font-weight:700; }
+  .value{ margin-top:4px; font-size: 18px; }
+
+  .qr{
+    z-index:1;
+    align-self:center; justify-self:end;
+    background:#fff; border-radius:14px; padding:16px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.45);
+  }
+  .qr img{ display:block; width: 320px; height: 320px; } /* ~70% de lo que tenías */
+  @media (max-width: 860px){
+    .body{ grid-template-columns: 1fr; }
+    .qr{ justify-self:center; }
+    .qr img{ width: 280px; height: 280px; }
+  }
+
+  .footer{
     display:flex; gap:24px; justify-content:space-between; align-items:center;
-    padding:14px 22px 22px 22px; color:#dddde3; font-weight:600;
+    padding: 0 32px 22px;
+    color: var(--muted);
   }
-  .foot .b{font-weight:900; color:#ffffff}
-
-  /* ---------- Button imprimir (no moved) ---------- */
-  .printBtn{
-    background:#2b2b2f; color:#fff; border:1px solid #41414a;
-    padding:10px 16px; border-radius:10px; cursor:pointer;
-  }
-
-  /* ---------- Responsive ---------- */
-  @media (max-width: 980px){
-    .main{ grid-template-columns: 1fr; }
-    .qrWrap{ justify-self:center; }
-  }
-  @media (max-width: 640px){
-    .title h1{ font-size: clamp(26px, 8vw, 32px); }
-    .brand img{ width:110px; height:110px; }
-    .qrWrap{
-      width: min(86vw, 420px);
-      height: min(86vw, 420px);
-    }
-    .wm::after{
-      background-size: min(95vh, 100vw);
-      opacity:.20; /* un poquito mÃ¡s en vertical para que se alcance a ver */
-      background-position:center 50%;
-    }
-  }
+  .footer b{ color: #fff; }
+  .print{ background: transparent; border:1px solid rgba(255,255,255,.3); color:#fff; padding:10px 16px; border-radius:10px; cursor:pointer; }
 </style>
 </head>
 <body>
   <div class="wrap">
-    <article class="ticket">
-      <header class="top">
+    <div class="ticket">
+      <div class="head">
         <div class="brand">
-          <!-- Logo: BLANCO en oscuro, NEGRO en claro (ya configurado por URL) -->
-          <picture>
-            <!-- light -->
-            ${LOGO_URL_LIGHT ? `<source srcset="${LOGO_URL_LIGHT}" media="(prefers-color-scheme: light)">` : ""}
-            <!-- dark -->
-            ${LOGO_URL_DARK  ? `<img src="${LOGO_URL_DARK}" alt="logo" width="160" height="160" loading="eager">` : `<div style="width:120px;height:120px"></div>`}
-          </picture>
-
-          <div class="title">
-            <h1>${titulo}</h1>
-            <div class="sub">Boleto General</div>
+          <div class="logo" title="Logo"></div>
+          <div class="titles">
+            <h1>${t.showTitle}</h1>
+            <div class="subtitle">Boleto General</div>
           </div>
         </div>
-        ${estadoChip}
-      </header>
+        <div class="chip ${chipClass}">${chipLabel}</div>
+      </div>
+      <div class="divider"></div>
 
-      <div class="hr"></div>
-
-      <section class="main">
-        <!-- Capa de marca de agua (no tapa info ni QR) -->
-        <div class="wm" aria-hidden="true"></div>
-
-        <div class="info">
-          <div class="row"><div class="lbl">FunciÃ³n:</div><div class="val">${funcion}</div></div>
-          <div class="row"><div class="lbl">Usuario:</div><div class="val">${usuario}</div></div>
-          <div class="row"><div class="lbl">CÃ³digo:</div><div class="val">${alumnoCodigo}</div></div>
-          <div class="row"><div class="lbl">ID:</div><div class="val">${t.id}</div></div>
+      <div class="body">
+        <div class="cosette"></div>
+        <div class="fields">
+          <div class="row">
+            <div class="label">Función:</div>
+            <div class="value">${t.showWhen || "—"}</div>
+          </div>
+          <div class="row">
+            <div class="label">Usuario:</div>
+            <div class="value">${t.buyerName} — ${t.buyerEmail}</div>
+          </div>
+          <div class="row">
+            <div class="label">Código:</div>
+            <div class="value">${t.studentCode || "—"}</div>
+          </div>
+          <div class="row">
+            <div class="label">ID:</div>
+            <div class="value">${t.id}</div>
+          </div>
         </div>
 
-        <div class="qrWrap">
-          <img src="${qrData}" alt="QR del boleto">
+        <div class="qr">
+          <img alt="QR" src="${qrDataURL}">
         </div>
-      </section>
+      </div>
 
-      <footer class="foot">
-        <button class="printBtn" onclick="window.print()">Imprimir</button>
+      <div class="footer">
+        <button class="print" onclick="window.print()">Imprimir</button>
         <div>Presenta este boleto en la entrada</div>
-        <div><span class="b">CLASIFICACIÃ“N:</span> 12 aÃ±os en adelante.</div>
-        <div>No estÃ¡ permitido introducir alimentos y bebidas a la sala.</div>
-      </footer>
-    </article>
+        <div><b>CLASIFICACIÓN:</b> 12 años en adelante.</div>
+        <div>No está permitido introducir alimentos y bebidas a la sala.</div>
+      </div>
+    </div>
   </div>
 </body>
 </html>`);
-});
-
-// ======================================================
-// (Resto de endpoints de API existentes) â€” No tocar
-// ======================================================
-
-// EmisiÃ³n normal (conservado)
-app.post("/api/tickets/issue", (req, res) => {
-  try {
-    const payload = req.body || {};
-    const id = cryptoRandomId();
-    const stmt = db.prepare(`
-      INSERT INTO tickets
-        (id, show_title, show_when, buyer_name, buyer_email, price_cents, used, alumno_code, codigo, buyer_phone)
-      VALUES
-        (@id, @show_title, @show_when, @buyer_name, @buyer_email, @price_cents, 0, @alumno_code, @codigo, @buyer_phone)
-    `);
-    stmt.run({
-      id,
-      show_title: payload.show_title || "Los Miserables",
-      show_when:  payload.show_when  || "",
-      buyer_name: payload.buyer_name || "",
-      buyer_email:payload.buyer_email|| "",
-      price_cents:payload.price_cents|| 0,
-      alumno_code:payload.alumno_code|| "",
-      codigo:     payload.codigo     || "",
-      buyer_phone:payload.buyer_phone|| "",
-    });
-    res.json({ ok:true, id, url: `${BASE_URL}/t/${id}` });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ ok:false, error:String(e.message||e) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error interno");
   }
 });
 
-// Usar ticket (conservado)
-app.post("/api/tickets/:id/use", (req, res) => {
-  const id = req.params.id;
-  try{
-    const upd = db.prepare(`UPDATE tickets SET used=1 WHERE id=?`).run(id);
-    res.json({ ok:true, id, used: true, changes: upd.changes });
-  }catch(e){
-    console.error(e);
-    res.status(500).json({ ok:false, error:String(e.message||e) });
-  }
-});
-
-// Lista de rutas para diagnÃ³stico (conservado)
-app.get("/__routes", (req, res) => {
-  res.json([
-    { methods:"GET",  path:"/health" },
-    { methods:"GET",  path:"/__routes" },
-    { methods:"POST", path:"/api/tickets/issue" },
-    { methods:"POST", path:"/api/tickets/:id/use" },
-    { methods:"GET",  path:"/t/:id" },
-  ]);
-});
-
-// ======================================================
-// Inicio
-// ======================================================
-initSchema();
+// ---------- arranque ----------
+const PORT = process.env.PORT || 10000;
 await initSchema();
 const db = getDB();
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
-  console.log(`URL BASE: ${BASE_URL}`);
+  console.log(`BASE URL: ${process.env.BASE_URL || ""}`);
 });
-
-// Utilidad simple para IDs
-function cryptoRandomId(){
-  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-  );
-}
-
-

@@ -1,80 +1,71 @@
 ﻿// backend/src/db.js
 import Database from "better-sqlite3";
-import path from "node:path";
-import fs from "node:fs";
 
+// Ruta persistente en Render (y local si lo deseas)
 const DB_PATH = process.env.DB_PATH || "/var/data/tickets.db";
 
-let _db = null;
+// Abrimos la BD una sola vez
+const db = new Database(DB_PATH);
+// rendimiento y consistencia
+db.pragma("journal_mode = WAL");
+db.pragma("synchronous = NORMAL");
 
-export function getDB() {
-  if (_db) return _db;
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  _db = new Database(DB_PATH);
-  _db.pragma("journal_mode = WAL");
-  return _db;
-}
-
-function tableInfo(db, table) {
-  try {
-    return db.prepare(`PRAGMA table_info(${table})`).all();
-  } catch {
-    return [];
-  }
-}
-
-function columnExists(db, table, column) {
-  const rows = tableInfo(db, table);
-  return rows.some((r) => r.name === column);
-}
-
-function ensureColumn(db, table, column, ddl) {
-  if (!columnExists(db, table, column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
-  }
-}
-
-function ensureIndexOnExistingColumn(db, indexName, table, column) {
-  if (!columnExists(db, table, column)) return; // no existe â†’ no intentes crear Ã­ndice
-  db.exec(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${table}(${column});`);
+/**
+ * Helper: ¿la tabla tiene la columna?
+ */
+function hasColumn(table, name) {
+  const row = db
+    .prepare("SELECT 1 FROM pragma_table_info(?) WHERE name = ?")
+    .get(table, name);
+  return !!row;
 }
 
 /**
- * Crea tablas base y aplica migraciones idempotentes.
- * Seguro para correr mÃºltiples veces.
+ * Helper: agrega columna solo si falta.
+ * Nota: SQLite admite `ALTER TABLE ... ADD COLUMN` (sin IF NOT EXISTS).
+ */
+function addColumnIfMissing(table, colDef) {
+  const colName = colDef.split(/\s+/)[0];
+  if (!hasColumn(table, colName)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${colDef}`);
+  }
+}
+
+/**
+ * Crea tabla base si no existe y garantiza columnas mínimas
+ * que usa la UI del ticket.
  */
 export async function initSchema() {
-  const db = getDB();
-
-  // Tabla base (si no existe). Usa 'status' como nombre moderno por omisiÃ³n.
+  // Tabla base mínima; si ya existía, no se sobreescribe.
   db.exec(`
     CREATE TABLE IF NOT EXISTS tickets (
-      id TEXT PRIMARY KEY,
-      buyer_name TEXT,
-      buyer_email TEXT,
-      status TEXT DEFAULT 'vigente',
-      price_cents INTEGER DEFAULT 0,
-      created_at INTEGER,
-      used_at INTEGER
+      id TEXT PRIMARY KEY
+      -- el resto de columnas se añaden de forma idempotente abajo
     );
   `);
 
-  // --- Migraciones idempotentes (no rompen datos existentes) ---
-  // Algunas instalaciones viejas pudieron usar 'estado' en vez de 'status'.
-  // No forzamos renombres: sÃ³lo evitamos fallas y aceptamos ambas.
+  // Columnas que la UI/consulta pueden leer.
+  // (Si ya existían, no se vuelven a crear)
+  addColumnIfMissing("tickets", "show_title   TEXT");      // título de la obra (ej. "Los Miserables")
+  addColumnIfMissing("tickets", "show_when    TEXT");      // función (ej. "Sáb 6 Dic 18:00")
+  addColumnIfMissing("tickets", "student_code TEXT");      // código del alumno
+  addColumnIfMissing("tickets", "buyer_name   TEXT");      // nombre comprador/usuario
+  addColumnIfMissing("tickets", "buyer_email  TEXT");      // correo del usuario
+  addColumnIfMissing("tickets", "status       TEXT");      // estado ("VIGENTE"/"USADO")
+  addColumnIfMissing("tickets", "estado       TEXT");      // alias legacy por compatibilidad
+  addColumnIfMissing("tickets", "qr           TEXT");      // contenido QR (si lo estás guardando)
+  addColumnIfMissing("tickets", "created_at   TEXT");      // opcional
 
-  // Campos nuevos usados por el render del ticket:
-  ensureColumn(db, "tickets", "show_title",   `TEXT DEFAULT 'Los Miserables'`);
-  ensureColumn(db, "tickets", "function_label", `TEXT`);
-  ensureColumn(db, "tickets", "alumno_code",    `TEXT`);
-
-  // Ãndices: crea sÃ³lo si la columna existe (status o estado).
-  ensureIndexOnExistingColumn(db, "idx_tickets_status", "tickets", "status");
-  ensureIndexOnExistingColumn(db, "idx_tickets_estado", "tickets", "estado");
-
-  // Otros Ã­ndices Ãºtiles
-  ensureIndexOnExistingColumn(db, "idx_tickets_buyer_email", "tickets", "buyer_email");
-
-  return db;
+  // Índices seguros (se crean sólo si no existen)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
+    CREATE INDEX IF NOT EXISTS idx_tickets_estado ON tickets(estado);
+  `);
 }
 
+/**
+ * Entrega la conexión ya abierta (single instance).
+ */
+export function getDB() {
+  return db;
+}
